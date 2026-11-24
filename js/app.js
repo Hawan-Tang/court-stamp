@@ -489,6 +489,22 @@ function readCards(cards, opt) {
 }
 
 /* ---------- 題目執行器 ---------- */
+const PLAIN = window.PLAIN || {};
+/* 條文白話：key 是「法規|條號」，\n 分段 */
+function plainHTML(arts) {
+  const seen = new Set(), out = [];
+  (arts || []).forEach(([law, no]) => { const k = law + '|' + no; if (seen.has(k) || !PLAIN[k]) return; seen.add(k); out.push(`<div class="fh">${esc(law)} ${esc(no)}</div>${PLAIN[k].split('\n').filter(Boolean).map(t => `<p>${esc(t)}</p>`).join('')}`); });
+  return out.join('');
+}
+/* 條文與白話一次只開一個 */
+function togglePanel(id) {
+  const el = document.getElementById(id); if (!el) return;
+  const open = el.hidden; ['full', 'plainbox'].forEach(x => { const e = document.getElementById(x); if (e) e.hidden = true; });
+  el.hidden = !open;
+  document.getElementById('peek')?.classList.toggle('on', id === 'full' && open);
+  document.getElementById('plainb')?.classList.toggle('on', id === 'plainbox' && open);
+  if (open) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 const BOOKMARK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M6.5 3.5h11v17l-5.5-4-5.5 4z"/></svg>';
 function bindFav(id) {
   const b = document.getElementById('qfav'); if (!b) return;
@@ -522,7 +538,8 @@ function runItems(items, opt) {
     const x = document.getElementById('x'); if (x) x.onclick = opt.back;
     const qs = document.getElementById('qset'); if (qs) qs.onclick = openSettings;
     const sp = document.getElementById('qsp'); if (sp) sp.onclick = () => { if (sp.classList.contains('on')) { stopSpeak(); return; } speak(sayA, sp); };
-    const pk = document.getElementById('peek'); if (pk) { pk.disabled = false; pk.onclick = () => { const f = document.getElementById('full'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } }; }
+    const pk = document.getElementById('peek'); if (pk) { pk.disabled = false; pk.onclick = () => togglePanel('full'); }
+    const pb = document.getElementById('plainb'); if (pb && !pb.hidden) pb.onclick = () => togglePanel('plainbox');
     const nb = document.querySelector('.qfoot .nextbtn'); if (nb) nb.onclick = () => live ? slide(1, () => { viewIdx = null; next(); }) : nav(1);
     const orb = document.getElementById('orb'); if (orb) { orb.disabled = !live; orb.onclick = live ? (() => { viewIdx = null; next(); }) : null; }
     bindSrc($app);
@@ -628,7 +645,7 @@ function runItems(items, opt) {
   };
   function foot() {
     const d = document.createElement('div'); d.className = 'dock qfoot';
-    d.innerHTML = `<div class="in"><button class="fbtn ghost" id="peek"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5 11-11"/></svg><span>查看答案</span></button><button class="fbtn primary" id="art" hidden></button></div>`;
+    d.innerHTML = `<div class="in"><button class="fbtn ghost" id="peek"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5 11-11"/></svg><span>查看答案</span></button><button class="fbtn ghost pl" id="plainb" hidden><span>白話</span></button><button class="fbtn primary" id="art" hidden></button></div>`;
     document.body.appendChild(d);
     document.getElementById('peek').onclick = () => { if (!S.done && S.reveal) S.reveal(); };
   }
@@ -642,7 +659,7 @@ function runItems(items, opt) {
     if (ok) { const qc = document.querySelector('.qcard'); if (qc) confetti(qc, S.combo >= 5 ? 22 : 12); }
     const peek = document.getElementById('peek'), art0 = document.getElementById('art');
     if (art0) { art0.hidden = false; art0.className = 'fbtn primary nextbtn'; art0.innerHTML = `<span>${S.i + 1 < items.length + pending.length ? '下一題' : '完成'}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>`; art0.onclick = () => slide(1, next); art0.setAttribute('aria-label', '下一題'); art0.focus({ preventScroll: true }); }
-    if (peek) { if (src && src.full) { peek.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M9 8h6M9 12h4"/></svg><span>條文</span>'; peek.classList.add('art'); peek.onclick = () => { const f = document.getElementById('full'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } }; } else peek.disabled = true; }
+    if (peek) { if (src && src.full) { peek.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M9 8h6M9 12h4"/></svg><span>條文</span>'; peek.classList.add('art'); peek.onclick = () => togglePanel('full'); } else peek.disabled = true; }
     setTimeout(snap, 0);
     if (src) {
       S.sayA = src.tts || '';
@@ -650,9 +667,11 @@ function runItems(items, opt) {
       const qs = document.getElementById('qs'); if (qs) qs.textContent = src.label;
       const ex = document.getElementById('ex'); if (ex && src.html) { ex.innerHTML = src.html; bindSrc(ex); }
       if (src.full && ex) ex.insertAdjacentHTML('beforeend', `<div class="fullart" id="full" hidden>${src.full}</div>`);
+      const pl = plainHTML(src.arts), pb = document.getElementById('plainb');
+      if (pl && ex && pb) { ex.insertAdjacentHTML('beforeend', `<div class="fullart plainbox" id="plainbox" hidden>${pl}</div>`); pb.hidden = false; pb.onclick = () => togglePanel('plainbox'); }
     }
   }
-  const srcOf = (law, no, quote, extra) => ({ tts: `${law}${no}。${quote || ''}`, label: `出處　${law} ${no}`, html: answerHTML(quote, extra), full: `<div class="fh">${esc(law)} ${esc(no)}</div>${artHTML(law, no, { quote, hl: true })}` });
+  const srcOf = (law, no, quote, extra) => ({ arts: [[law, no]], tts: `${law}${no}。${quote || ''}`, label: `出處　${law} ${no}`, html: answerHTML(quote, extra), full: `<div class="fh">${esc(law)} ${esc(no)}</div>${artHTML(law, no, { quote, hl: true })}` });
   function draw() {
     window.scrollTo(0, 0); S.done = false; S.reveal = null; S.say = null; S.sayA = ''; $app.classList.remove('static');
     document.querySelectorAll('.dock').forEach(d => d.remove());
@@ -720,7 +739,7 @@ function runItems(items, opt) {
     $app.innerHTML = card(it, '配對', `<div class="match"><div class="col">${left.map(x => `<button class="mi a" data-i="${x.i}">${esc(x.s)}</button>`).join('')}</div><div class="col">${right.map(x => `<button class="mi b" data-i="${x.i}">${esc(x.s)}</button>`).join('')}</div></div>`) + `<div id="ex"></div>`;
     let sel = null, errs = 0, got = 0;
     S.say = () => '請把左右兩邊配對。';
-    const src = () => ({ tts: set.map(p => p.a + '，' + p.b).join('。'), label: '出處　' + [...new Set(set.map(p => p.law + ' ' + p.no))].join('、'), html: `<div class="ans">${set.map(p => `<div>${esc(p.a)}　<b class="hl-n">${esc(p.b)}</b></div>`).join('')}</div>` });
+    const src = () => ({ arts: set.map(p => [p.law, p.no]), tts: set.map(p => p.a + '，' + p.b).join('。'), label: '出處　' + [...new Set(set.map(p => p.law + ' ' + p.no))].join('、'), html: `<div class="ans">${set.map(p => `<div>${esc(p.a)}　<b class="hl-n">${esc(p.b)}</b></div>`).join('')}</div>` });
     const pick = b => {
       if (b.classList.contains('ok') || S.done) return;
       if (!sel || sel.classList.contains(b.classList.contains('a') ? 'a' : 'b')) { $app.querySelectorAll('.mi.sel').forEach(x => x.classList.remove('sel')); sel = b; b.classList.add('sel'); return; }
@@ -736,7 +755,7 @@ function runItems(items, opt) {
     $app.innerHTML = card(it, '排序', `<p class="qtext">${esc(s.title)}</p><div class="seqslots">${s.steps.map((_, i) => `<div class="seqslot ${i === 0 ? 'next' : ''}" data-i="${i}"></div>`).join('')}</div>`) + `<div class="seqpool">${pool.map(x => `<button data-i="${x.i}">${esc(x.t)}</button>`).join('')}</div><div id="ex"></div>`;
     let n = 0, errs = 0; const slots = [...$app.querySelectorAll('.seqslot')];
     S.say = () => s.title + '。請排出順序。';
-    const src = () => ({ tts: s.title + '：' + s.steps.join('，接著，'), label: `出處　${s.law} ${s.nos.join('、')}`, html: '', full: s.nos.map(no => `<div class="fh">${esc(s.law)} ${esc(no)}</div>${artHTML(s.law, no, { hl: true })}`).join('') });
+    const src = () => ({ arts: s.nos.map(no => [s.law, no]), tts: s.title + '：' + s.steps.join('，接著，'), label: `出處　${s.law} ${s.nos.join('、')}`, html: '', full: s.nos.map(no => `<div class="fh">${esc(s.law)} ${esc(no)}</div>${artHTML(s.law, no, { hl: true })}`).join('') });
     $app.querySelectorAll('.seqpool button').forEach(b => b.onclick = () => {
       if (S.done) return;
       if (+b.dataset.i === n) { slots[n].textContent = b.textContent; slots[n].classList.remove('next'); slots[n].classList.add('f'); b.remove(); n++; sPlace(); if (slots[n]) slots[n].classList.add('next'); if (n === s.steps.length) result(errs <= 1, src()); }
