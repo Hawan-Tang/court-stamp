@@ -602,3 +602,4 @@ body.playing .qslide{will-change:transform;touch-action:pan-y}
 .ssel{max-width:60%;font:inherit;font-size:14px;color:var(--ink);background:var(--faint);border:0;border-radius:10px;padding:6px 10px}
 .sver{text-align:center;font-size:12px;color:var(--muted);padding:4px 0 2px}
 .sheet-wrap .sheet>*{flex-shrink:0}
+.qslide{display:flex;flex-direction:column;gap:22px}
