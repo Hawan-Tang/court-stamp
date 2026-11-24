@@ -538,7 +538,7 @@ function runItems(items, opt) {
     });
   }
   let tx = null, ty = null, lx = 0, ly = 0, horiz = null, t0 = 0, okDir = 0;
-  const qcardEl = () => document.querySelector('.qcard');
+  const qcardEl = () => document.querySelector('.qslide') || document.querySelector('.qcard');
   const tStart = e => { if (sliding || e.touches.length > 1 || e.target.closest('.tfcard,.sheet-wrap,input,.toast,.lawbox')) { tx = null; return; } const p = e.touches[0]; tx = lx = p.clientX; ty = ly = p.clientY; horiz = null; t0 = Date.now(); };
   const tMove = e => {
     if (tx === null) return; const p = e.touches[0]; lx = p.clientX; ly = p.clientY;
@@ -612,6 +612,10 @@ function runItems(items, opt) {
     document.querySelectorAll('.dock').forEach(d => d.remove());
     const it = items[S.i];
     ({ q: drawQ, z: drawZ, t: drawT, m: drawM, s: drawS, o: drawO })[it.t](it);
+    // 題目卡＋選項＋解答包在一起，滑動時整塊一起動（上方進度列不動）
+    const wrap = document.createElement('div'); wrap.className = 'qslide';
+    [...$app.children].filter(n => !n.classList.contains('qtop')).forEach(n => wrap.appendChild(n));
+    $app.appendChild(wrap);
     foot();
     const sp = document.getElementById('qsp');
     if (sp) { sp.onclick = () => { if (sp.classList.contains('on')) { stopSpeak(); return; } speak(S.done ? S.sayA : (S.say && S.say()), sp); }; if (ST.set.tts && S.say) setTimeout(() => speak(S.say(), sp), 250); }
