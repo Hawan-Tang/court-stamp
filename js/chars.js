@@ -130,7 +130,7 @@
 
   function svg(id, mood, opts) {
     const d = DEF[id] || DEF.turtle; opts = opts || {};
-    return `<svg class="${opts.cls || 'chr'}" viewBox="0 0 120 120" aria-hidden="true">${d.draw(mood || 'idle')}</svg>`;
+    return `<svg class="${opts.cls || 'chr'}" viewBox="${opts.head ? '24 16 72 72' : '0 0 120 120'}" aria-hidden="true">${d.draw(mood || 'idle')}</svg>`;
   }
   window.CHARS = { list: Object.keys(DEF).map(k => ({ id: k, name: DEF[k].name, role: DEF[k].role, price: DEF[k].price })), svg };
 })();
