@@ -594,3 +594,7 @@ body.playing main{touch-action:pan-y}
 .fbtn.primary:active{transform:translateY(3px);box-shadow:0 1px 0 var(--indigo-d)}
 .fbtn.primary svg{width:20px;height:20px}
 main{padding-bottom:120px}
+
+/* v10：換題滑動動畫 */
+body.playing main{overflow-x:hidden;overflow-x:clip}
+body.playing .qcard{will-change:transform;touch-action:pan-y}
