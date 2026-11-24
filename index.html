@@ -15,7 +15,17 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Serif+TC:wght@700;900&display=swap">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Serif+TC:wght@700;900&display=swap"></noscript>
-<link rel="stylesheet" href="css/app.css?v=12">
+<link rel="stylesheet" href="css/app.css?v=13">
+<style>
+#boot{position:fixed;inset:0;z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;background:#F2F2F7;transition:opacity .35s}
+#boot img{width:96px;height:96px;border-radius:24px;animation:bootb 1.2s ease-in-out infinite}
+#boot .bar{width:min(56vw,220px);height:8px;border-radius:8px;background:rgba(108,92,231,.16);overflow:hidden}
+#boot .bar i{display:block;height:100%;background:#6C5CE7;border-radius:8px;transform-origin:0 50%;transform:scaleX(0);transition:transform .25s ease-out}
+#boot.done{opacity:0;pointer-events:none}
+@keyframes bootb{50%{transform:translateY(-8px)}}
+@media (prefers-color-scheme: dark){#boot{background:#141418}#boot .bar{background:rgba(139,124,246,.2)}#boot .bar i{background:#8B7CF6}}
+@media (prefers-reduced-motion: reduce){#boot img{animation:none}}
+</style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -43,9 +53,44 @@
   <a href="#numbers" data-v="lookup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M9 8h6M9 12h4"/></svg>查詢</a>
 </div></nav>
 
-<script src="js/data.js?v=12"></script>
-<script src="js/laws.js?v=12"></script>
-<script src="js/chars.js?v=12"></script>
-<script src="js/app.js?v=12"></script>
+<div id="boot" aria-hidden="true"><img src="icons/icon-192.png" alt=""><div class="bar"><i id="bootbar"></i></div></div>
+<script>
+/* 開啟畫面：下載題庫時顯示進度條，載完才跑主程式 */
+// 背景發現新版：還沒開始答題就直接重新整理
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', function (e) { if (e.data === 'updated' && !document.body.classList.contains('playing')) location.reload(); });
+(function () {
+  var V = '13', files = [['js/data.js', 1241373], ['js/laws.js', 596875], ['js/chars.js', 12175], ['js/app.js', 82795]];
+  var got = files.map(function () { return 0; }), txt = [], left = files.length, t0 = Date.now(), shown = 0, bar = document.getElementById('bootbar');
+  var total = files.reduce(function (a, f) { return a + f[1]; }, 0);
+  function paint() {
+    var real = got.reduce(function (a, b) { return a + b; }, 0) / total;
+    var fake = 1 - Math.exp(-(Date.now() - t0) / 2500);           // 拿不到大小時也會慢慢往前
+    shown = Math.max(shown, Math.min(.97, Math.max(real, fake * .9)));
+    bar.style.transform = 'scaleX(' + shown + ')';
+    if (left) requestAnimationFrame(paint);
+  }
+  requestAnimationFrame(paint);
+  function run() {
+    txt.forEach(function (t) { var s = document.createElement('script'); s.text = t; document.body.appendChild(s); });
+    bar.style.transform = 'scaleX(1)';
+    var b = document.getElementById('boot'); b.classList.add('done'); setTimeout(function () { b.remove(); }, 400);
+  }
+  function fallback() { // 讀取失敗就改用一般方式載入
+    var i = 0; (function nx() { if (i >= files.length) { document.getElementById('boot').remove(); return; } var s = document.createElement('script'); s.src = files[i++][0] + '?v=' + V; s.onload = nx; document.body.appendChild(s); })();
+  }
+  var failed = false;
+  files.forEach(function (f, i) {
+    var x = new XMLHttpRequest(); x.open('GET', f[0] + '?v=' + V);
+    x.onprogress = function (e) { got[i] = Math.min(f[1], e.lengthComputable && e.total ? e.loaded / e.total * f[1] : e.loaded); };
+    x.onload = function () {
+      if (failed) return;
+      if (x.status !== 200 && x.status !== 0) { failed = true; left = 0; fallback(); return; }
+      got[i] = f[1]; txt[i] = x.responseText; if (!--left) run();
+    };
+    x.onerror = function () { if (!failed) { failed = true; left = 0; fallback(); } };
+    x.send();
+  });
+})();
+</script>
 </body>
 </html>
