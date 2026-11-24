@@ -212,12 +212,12 @@ mark{background:var(--mark);color:inherit;border-radius:2px;padding:0 1px}
 .mode span{font-size:13px;color:var(--muted)}
 .timer{font-family:var(--f-head);font-weight:900;font-size:22px;font-variant-numeric:tabular-nums}
 .timer.low{color:var(--verm)}
-.sheet{display:grid;grid-template-columns:repeat(10,1fr);gap:5px}
-.sheet button{aspect-ratio:1;border:1px solid var(--line);background:var(--page);border-radius:6px;font-size:12px;padding:0;font-variant-numeric:tabular-nums}
-.sheet button.f{background:var(--indigo-soft);border-color:var(--indigo);color:var(--indigo);font-weight:700}
-.sheet button.cur{outline:2px solid var(--ink);outline-offset:1px}
-.sheet button.x{background:var(--badbg);border-color:var(--verm);color:var(--verm)}
-.sheet button.o{background:var(--okbg);border-color:var(--ok);color:var(--ok)}
+.ansheet{display:grid;grid-template-columns:repeat(10,minmax(0,44px));justify-content:center;gap:6px}
+.ansheet button{aspect-ratio:1;border:1px solid var(--line);background:var(--page);border-radius:6px;font-size:12px;padding:0;font-variant-numeric:tabular-nums}
+.ansheet button.f{background:var(--indigo-soft);border-color:var(--indigo);color:var(--indigo);font-weight:700}
+.ansheet button.cur{outline:2px solid var(--ink);outline-offset:1px}
+.ansheet button.x{background:var(--badbg);border-color:var(--verm);color:var(--verm)}
+.ansheet button.o{background:var(--okbg);border-color:var(--ok);color:var(--ok)}
 
 /* 列表、數字表、條文 */
 .list{background:var(--page);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
