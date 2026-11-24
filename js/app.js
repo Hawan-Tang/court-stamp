@@ -324,7 +324,7 @@ const ROUND = 15;
 function sessionPool(mode) {
   if (mode === 'chi' || mode === 'cie') return GEN.filter(q => q.subj === mode).sort((a, b) => a.id < b.id ? 1 : -1).map(q => ({ t: 'q', id: q.id }));
   const out = [], seen = new Set();
-  for (const lv of LV) { if (mode !== 'all' && lawOf(lv.unit) !== mode) continue; for (const [t, id] of lv.items) if (!seen.has(id)) { seen.add(id); out.push({ t, id }); } }
+  for (const lv of LV) { if (mode !== 'all' && lawOf(lv.unit) !== mode) continue; for (const [t, id] of lv.items) if (t === 'q' && !seen.has(id)) { seen.add(id); out.push({ t, id }); } }
   return out;
 }
 function poolProgress(mode) { const p = sessionPool(mode); return [p.filter(x => ST.r[x.id]).length, p.length]; }
@@ -364,13 +364,12 @@ function vHome() {
     </div>
   </section>
   <section class="maincard" style="--mc:${m.c}">
-    ${hit ? `<span class="ribbon">${TROPHY}</span>` : ''}
     <div class="mtabs">${MODES.map(x => `<button class="mtab ${x.k === ST.mode ? 'on' : ''}" data-m="${x.k}" style="--tc:${x.c}">${x.tab}</button>`).join('')}<button class="mtab gear" id="mset" aria-label="設定">${GEAR}</button></div>
     <div class="mc-in">
       <button class="hero-chr" id="hc" aria-label="${esc((CHARS.list.find(c => c.id === ST.chr) || {}).name || '')}">${CHARS.svg(ST.chr, 'idle')}</button>
       ${acc !== null ? `<a class="acc" href="#wrong">答對率 ${acc}% ›</a>` : ''}
-      <div class="mc-row"><div><h2>${m.t}</h2><div class="prog num">${pg[0]} / ${pg[1]}<i class="pbar"><i style="width:${pg[1] ? pg[0] / pg[1] * 100 : 0}%"></i></i></div><div class="goal">每日目標 <b class="num">${GOAL}</b> 題 <button class="goaledit" id="goalEdit" aria-label="修改每日目標"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button></div></div>${gauge(d.right / GOAL)}</div>
-      <button class="start" id="st">${allDone ? '全部做完・去複習' : hit ? '★ 額外學習' : '開始學習'}</button>
+      <div class="mc-row"><div><h2>${m.t}</h2><div class="prog num">${pg[0]} / ${pg[1]}<i class="pbar"><i style="width:${pg[1] ? pg[0] / pg[1] * 100 : 0}%"></i></i></div></div></div>
+      <button class="start" id="st">${allDone ? '全部做完・去複習' : '開始學習'}</button>
     </div>
   </section>
   <section class="infocard"><a class="ic-h" href="#map"><h2>學習資訊</h2><span>›</span></a>
@@ -381,7 +380,6 @@ function vHome() {
   document.getElementById('st').onclick = startSession;
   $app.querySelectorAll('.mtab[data-m]').forEach(b => b.onclick = () => { ST.mode = b.dataset.m; save(); vHome(); });
   document.getElementById('mset').onclick = openSettings;
-  document.getElementById('goalEdit').onclick = () => { const opts = [20, 30, 50, 80]; ST.goal = opts[(opts.indexOf(ST.goal) + 1) % opts.length]; GOAL = ST.goal; const dd = ST.days[today()]; if (dd && dd.goal && dd.right < GOAL) dd.goal = 0; save(); vHome(); };
   const hc = document.getElementById('hc');
   hc.onclick = () => { hc.innerHTML = CHARS.svg(ST.chr, 'happy'); hc.classList.remove('jump'); void hc.offsetWidth; hc.classList.add('jump'); pluck(523, 0, .1, .5); pluck(659, .09, .1, .6); setTimeout(() => { hc.innerHTML = CHARS.svg(ST.chr, 'idle'); }, 900); };
 }
@@ -399,8 +397,6 @@ function sessionEnd(S, opt) {
     <div class="endchr jump">${CHARS.svg(ST.chr, 'happy')}</div>
     <div class="score">${S.right}<small> / ${S.answered}</small></div>
     <div class="gain">${COIN}<b>+${S.right + 5}${hit ? ' +20' : ''}</b></div>
-    ${gauge(d.right / GOAL)}
-    ${hit ? `<span class="ribbon big pop">${TROPHY}</span>` : ''}
   </div>
   <div class="btns"><button class="btn" id="again">再一輪</button><button class="btn ghost" id="home">首頁</button></div>`;
   if (hit) setTimeout(() => { sStamp(); sWin(); }, 400);
