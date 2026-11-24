@@ -467,7 +467,7 @@ function runItems(items, opt) {
     const qs = document.getElementById('qset'); if (qs) qs.onclick = openSettings;
     const sp = document.getElementById('qsp'); if (sp) sp.onclick = () => { if (sp.classList.contains('on')) { stopSpeak(); return; } speak(sayA, sp); };
     const pk = document.getElementById('peek'); if (pk) { pk.disabled = false; pk.onclick = () => { const f = document.getElementById('full'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } }; }
-    const nb = document.querySelector('.qfoot .nextbtn'); if (nb) nb.onclick = () => live ? (viewIdx = null, next()) : nav(1);
+    const nb = document.querySelector('.qfoot .nextbtn'); if (nb) nb.onclick = () => live ? slide(1, () => { viewIdx = null; next(); }) : nav(1);
     const orb = document.getElementById('orb'); if (orb) { orb.disabled = !live; orb.onclick = live ? (() => { viewIdx = null; next(); }) : null; }
     bindSrc($app);
   }
@@ -487,37 +487,68 @@ function runItems(items, opt) {
     const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t);
     setTimeout(() => t.classList.add('out'), 1100); setTimeout(() => t.remove(), 1500);
   }
-  function nav(dir) {
-    if (!document.querySelector('.qcard')) return;
-    if (dir > 0) {
-      if (viewIdx !== null) {
-        viewIdx++;
-        if (viewIdx >= S.i) { viewIdx = null; $app.classList.remove('static'); if (!(S.done && showHist(S.i))) draw(); }
-        else showHist(viewIdx);
-        return;
-      }
-      if (S.done) { next(); return; }
-      const c = document.querySelector('.qcard'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake');
-      toast('還沒作答'); buzz(40); pluck(392, 0, .12, .25);
-    } else {
-      const cur = viewIdx === null ? S.i : viewIdx;
-      if (cur <= 0 || !S.hist[cur - 1]) { const c = document.querySelector('.qcard'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake'); return; }
-      viewIdx = cur - 1; showHist(viewIdx);
-    }
+  /* 換題動畫：舊卡往外滑出，新卡從另一側滑進來 */
+  let sliding = false;
+  const W = () => Math.max(320, window.innerWidth);
+  function slide(dir, fn) {
+    if (sliding) return; const c = qcardEl();
+    if (!c || matchMedia('(prefers-reduced-motion: reduce)').matches) { fn(); return; }
+    sliding = true;
+    const cur = new DOMMatrix(getComputedStyle(c).transform).m41 || 0, out = -dir * (W() + 40);
+    const ms = Math.max(110, Math.min(220, Math.abs(out - cur) / W() * 220));
+    c.style.transition = `transform ${ms}ms cubic-bezier(.4,0,1,1), opacity ${ms}ms`; c.style.transform = `translateX(${out}px) rotate(${-dir * 4}deg)`; c.style.opacity = '0';
+    setTimeout(() => {
+      fn(); sliding = false;
+      const n = qcardEl(); if (!n) return;
+      n.style.transition = 'none'; n.style.transform = `translateX(${dir * W() * .6}px)`; n.style.opacity = '0'; void n.offsetWidth;
+      n.style.transition = 'transform .34s cubic-bezier(.2,.9,.25,1.05), opacity .2s'; n.style.transform = ''; n.style.opacity = '';
+      setTimeout(() => { if (n.isConnected) { n.style.transition = ''; } }, 380);
+    }, ms);
   }
-  let tx = null, ty = null, lx = 0, ly = 0, horiz = null;
+  function bounce() { const c = qcardEl(); if (!c) return; c.style.transition = 'transform .45s cubic-bezier(.3,1.6,.5,1)'; c.style.transform = ''; }
+  function canNav(dir) {
+    if (dir > 0) return viewIdx !== null || S.done;
+    const cur = viewIdx === null ? S.i : viewIdx; return cur > 0 && !!S.hist[cur - 1];
+  }
+  function nav(dir) {
+    if (!document.querySelector('.qcard') || sliding) return;
+    if (!canNav(dir)) {
+      bounce();
+      const c = qcardEl(); setTimeout(() => { c.style.transition = ''; c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake'); }, 60);
+      if (dir > 0) { toast('還沒作答'); buzz(40); pluck(392, 0, .12, .25); }
+      return;
+    }
+    slide(dir, () => {
+      if (dir > 0) {
+        if (viewIdx !== null) {
+          viewIdx++;
+          if (viewIdx >= S.i) { viewIdx = null; $app.classList.remove('static'); if (!(S.done && showHist(S.i))) draw(); }
+          else showHist(viewIdx);
+        } else next();
+      } else { const cur = viewIdx === null ? S.i : viewIdx; viewIdx = cur - 1; showHist(viewIdx); }
+    });
+  }
+  let tx = null, ty = null, lx = 0, ly = 0, horiz = null, t0 = 0, okDir = 0;
   const qcardEl = () => document.querySelector('.qcard');
-  const tStart = e => { if (e.touches.length > 1 || e.target.closest('.tfcard,.sheet-wrap,input,.toast')) { tx = null; return; } const p = e.touches[0]; tx = lx = p.clientX; ty = ly = p.clientY; horiz = null; };
+  const tStart = e => { if (sliding || e.touches.length > 1 || e.target.closest('.tfcard,.sheet-wrap,input,.toast,.lawbox')) { tx = null; return; } const p = e.touches[0]; tx = lx = p.clientX; ty = ly = p.clientY; horiz = null; t0 = Date.now(); };
   const tMove = e => {
     if (tx === null) return; const p = e.touches[0]; lx = p.clientX; ly = p.clientY;
     const dx = lx - tx, dy = ly - ty;
     if (horiz === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) horiz = Math.abs(dx) > Math.abs(dy);
-    if (horiz) { const c = qcardEl(); if (c) { c.style.transition = 'none'; c.style.transform = `translateX(${dx * 0.35}px)`; } }
+    if (horiz) {
+      const c = qcardEl(); if (!c) return;
+      const dir = dx < 0 ? 1 : -1, ok = canNav(dir);
+      // 能換題就跟手，不能換就越拉越緊
+      const x = ok ? dx : Math.sign(dx) * 40 * (1 - Math.exp(-Math.abs(dx) / 90));
+      c.style.transition = 'none'; c.style.transform = `translateX(${x}px) rotate(${ok ? x / W() * 6 : 0}deg)`;
+    }
   };
   const tEnd = () => {
-    if (tx === null) return; const dx = lx - tx, dy = ly - ty; tx = null;
-    const c = qcardEl(); if (c) { c.style.transition = 'transform .2s'; c.style.transform = ''; }
-    if (horiz && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.3) nav(dx < 0 ? 1 : -1);
+    if (tx === null) return; const dx = lx - tx, dy = ly - ty, dt = Date.now() - t0; tx = null;
+    if (!horiz) return;
+    const fast = dt < 260 && Math.abs(dx) > 30;
+    if ((Math.abs(dx) > Math.min(90, W() * .22) || fast) && Math.abs(dx) > Math.abs(dy) * 1.2) nav(dx < 0 ? 1 : -1);
+    else bounce();
   };
   const kd = e => { if (document.getElementById('sheet') || !document.querySelector('.qcard') || document.querySelector('.tfcard')) return; if (e.key === 'ArrowRight') nav(1); else if (e.key === 'ArrowLeft') nav(-1); };
   document.addEventListener('touchstart', tStart, { passive: true }); document.addEventListener('touchmove', tMove, { passive: true }); document.addEventListener('touchend', tEnd, { passive: true }); document.addEventListener('touchcancel', tEnd, { passive: true }); document.addEventListener('keydown', kd);
@@ -555,7 +586,7 @@ function runItems(items, opt) {
     const orb = document.getElementById('orb'), mc = document.getElementById('mc');
     if (ok) { const qc = document.querySelector('.qcard'); if (qc) confetti(qc, S.combo >= 5 ? 22 : 12); }
     const peek = document.getElementById('peek'), art0 = document.getElementById('art');
-    if (art0) { art0.hidden = false; art0.className = 'fbtn primary nextbtn'; art0.innerHTML = `<span>${S.i + 1 < items.length + pending.length ? '下一題' : '完成'}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>`; art0.onclick = next; art0.setAttribute('aria-label', '下一題'); art0.focus({ preventScroll: true }); }
+    if (art0) { art0.hidden = false; art0.className = 'fbtn primary nextbtn'; art0.innerHTML = `<span>${S.i + 1 < items.length + pending.length ? '下一題' : '完成'}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>`; art0.onclick = () => slide(1, next); art0.setAttribute('aria-label', '下一題'); art0.focus({ preventScroll: true }); }
     if (peek) { if (src && src.full) { peek.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M9 8h6M9 12h4"/></svg><span>條文</span>'; peek.classList.add('art'); peek.onclick = () => { const f = document.getElementById('full'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } }; } else peek.disabled = true; }
     setTimeout(snap, 0);
     if (src) {
