@@ -22,7 +22,7 @@ const LV = D.levels, LVI = {}; LV.forEach((l, i) => LVI[l.id] = i);
 const O = {}; (D.order || []).forEach(o => O[o.id] = o);
 function load() { try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.r) return v; } catch (e) {} return { r: {}, lv: {}, mute: false, mocks: [], quick: 0 }; }
 const ST = load(); ST.lv = ST.lv || {}; ST.mocks = ST.mocks || [];
-ST.set = Object.assign({ sound: ST.mute ? false : true, vol: 0.6, vib: true, anim: true, hl: ST.hl === false ? false : true, notes: true }, ST.set || {});
+ST.set = Object.assign({ sound: ST.mute ? false : true, vol: 0.6, vib: true, anim: true, hl: ST.hl === false ? false : true, notes: true, retry: 3 }, ST.set || {});
 ST.mode = ST.mode || 'all'; ST.goal = ST.goal || 30; ST.gifts = ST.gifts || {};
 ST.srs = ST.srs || {}; ST.days = ST.days || {}; ST.coins = ST.coins || 0; ST.owned = ST.owned || ['turtle']; ST.chr = ST.chr || 'turtle';
 let GOAL = ST.goal;
@@ -33,7 +33,7 @@ const SRS_T = { q: 1, z: 1, o: 1 };
 function srsUpdate(id, ok) {
   const s = ST.srs[id] || { l: 0, due: 0 };
   if (ok) { s.l = Math.min(s.l + 1, SRS_DAYS.length); s.due = Date.now() + SRS_DAYS[s.l - 1] * 864e5 - 3600e3; }
-  else { s.l = 0; s.due = Date.now(); }
+  else { s.l = 0; s.due = Date.now() + (ST.set.retry || 3) * 60e3; }
   ST.srs[id] = s;
 }
 const typeOf = id => Q[id] ? 'q' : Z[id] ? 'z' : O[id] ? 'o' : T[id] ? 't' : SQ[id] ? 's' : 'm';
@@ -192,6 +192,7 @@ function openSettings() {
   const el = document.createElement('div'); el.id = 'sheet'; el.className = 'sheet-wrap';
   el.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="設定"><div class="grab"></div><div class="shead"><span></span><h2>設定</h2><button class="sdone" id="sclose">完成</button></div>
     <div class="sgroup">${sw('sound', '音效')}<label class="srow vol ${ST.set.sound ? '' : 'off'}"><span><b>音量</b></span><input type="range" id="vol" min="0" max="1" step="0.05" value="${ST.set.vol}"></label>${sw('vib', '震動', '答錯時手機震一下')}${sw('anim', '動畫', '角色動作、紙花、滑入效果')}</div>
+    <div class="sgroup"><div class="srow col"><span><b>答錯的題目幾分鐘後再出現</b></span><div class="segc" id="retry">${[1, 2, 3, 4, 5].map(n => `<button class="${(ST.set.retry || 3) === n ? 'on' : ''}" data-n="${n}">${n} 分</button>`).join('')}</div></div></div>
     <div class="sgroup">${sw('hl', '螢光筆標色', '數字、主體、例外字上色')}${sw('notes', '註釋', '專有名詞可以點開解釋')}</div>
     </div>`;
   document.body.appendChild(el);
@@ -199,6 +200,7 @@ function openSettings() {
   el.addEventListener('click', e => { if (e.target === el) close(); });
   document.getElementById('sclose').onclick = close;
   el.querySelectorAll('.sw').forEach(c => c.onchange = () => { ST.set[c.dataset.k] = c.checked; save(); applyAnim(); el.querySelector('.vol').classList.toggle('off', !ST.set.sound); if (c.dataset.k === 'sound' && c.checked) sOk(); });
+  el.querySelectorAll('#retry button').forEach(b => b.onclick = () => { ST.set.retry = +b.dataset.n; save(); el.querySelectorAll('#retry button').forEach(x => x.classList.toggle('on', x === b)); });
   const v = document.getElementById('vol'); v.oninput = () => { ST.set.vol = +v.value; save(); }; v.onchange = () => sOk();
 }
 
@@ -420,11 +422,18 @@ const LAWTAB = { org: '法組', civ: '民訴', crim: '刑訴' };
 function runItems(items, opt) {
   document.body.classList.add('playing');
   const S = { i: 0, right: 0, combo: 0, best: 0, answered: 0, done: false, reveal: null };
-  const next = () => { if (!S.done) return; document.querySelectorAll('.dock').forEach(d => d.remove()); S.i++; S.i < items.length ? draw() : finish(); };
+  const pending = [];
+  const next = () => {
+    if (!S.done) return; document.querySelectorAll('.dock').forEach(d => d.remove()); S.i++;
+    const now = Date.now(), ready = pending.filter(p => p.at <= now);
+    ready.forEach(p => { pending.splice(pending.indexOf(p), 1); items.splice(S.i, 0, p.it); });
+    if (S.i >= items.length && pending.length) { pending.sort((a, b) => a.at - b.at); items.push(...pending.splice(0).map(p => p.it)); }
+    S.i < items.length ? draw() : finish();
+  };
   const top = () => {
-    const pct = S.i / items.length * 100;
+    const tot = items.length + pending.length, pct = S.i / tot * 100;
     return `<div class="qtop"><button class="icon-btn" id="x" aria-label="離開"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-      <div class="qbar"><span class="qflame ${S.combo > 1 ? 'hot' : ''}" id="qf">${S.combo > 1 ? `<b>${S.combo}</b>` : FLAME}</span><span class="qtrack"><i style="width:${pct}%"></i><em class="num">${S.i}/${items.length}</em></span><span class="qstar">★</span></div>
+      <div class="qbar"><span class="qflame ${S.combo > 1 ? 'hot' : ''}" id="qf">${S.combo > 1 ? `<b>${S.combo}</b>` : FLAME}</span><span class="qtrack"><i style="width:${pct}%"></i><em class="num">${S.i}/${tot}</em></span><span class="qstar">★</span></div>
       <button class="icon-btn" id="qset" aria-label="設定">${GEAR}</button></div>`;
   };
   const card = (it, tab, body) => {
@@ -445,7 +454,7 @@ function runItems(items, opt) {
     const it = items[S.i];
     mark(it.id, ok); S.answered++;
     if (ok) { S.right++; S.combo++; S.best = Math.max(S.best, S.combo); comboNow = S.combo; sOk(); } else { S.combo = 0; comboNow = 0; sBad(); buzz(120); }
-    if (!ok && opt.session && (it.retry || 0) < 2) items.splice(Math.min(S.i + 4, items.length), 0, { t: it.t, id: it.id, retry: (it.retry || 0) + 1 });
+    if (!ok && opt.session && (it.retry || 0) < 2) pending.push({ at: Date.now() + (ST.set.retry || 3) * 60e3, it: { t: it.t, id: it.id, retry: (it.retry || 0) + 1 } });
     const qf = document.getElementById('qf'); if (qf) { qf.className = 'qflame' + (S.combo > 1 ? ' hot pop' : ''); qf.innerHTML = S.combo > 1 ? `<b>${S.combo}</b>` : FLAME; }
     const orb = document.getElementById('orb'), mc = document.getElementById('mc');
     if (orb) { orb.disabled = false; orb.classList.add('ready', ok ? 'good' : 'bad'); mc.innerHTML = CHARS.svg(ST.chr, ok ? 'happy' : 'sad'); mc.className = 'orbchr ' + (ok ? 'jump' : 'sadshake'); if (ok) confetti(orb, S.combo >= 5 ? 22 : 12); orb.focus({ preventScroll: true }); }
