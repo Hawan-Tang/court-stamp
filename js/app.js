@@ -22,7 +22,7 @@ const LV = D.levels, LVI = {}; LV.forEach((l, i) => LVI[l.id] = i);
 const O = {}; (D.order || []).forEach(o => O[o.id] = o);
 function load() { try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.r) return v; } catch (e) {} return { r: {}, lv: {}, mute: false, mocks: [], quick: 0 }; }
 const ST = load(); ST.lv = ST.lv || {}; ST.mocks = ST.mocks || [];
-ST.set = Object.assign({ sound: ST.mute ? false : true, vol: 0.6, vib: true, anim: true, hl: ST.hl === false ? false : true, notes: true, retry: 3 }, ST.set || {});
+ST.set = Object.assign({ sound: ST.mute ? false : true, vol: 0.6, vib: true, anim: true, hl: ST.hl === false ? false : true, notes: true, tts: false, ttsRate: 1 }, ST.set || {});
 ST.mode = ST.mode || 'all'; ST.goal = ST.goal || 30; ST.gifts = ST.gifts || {};
 ST.srs = ST.srs || {}; ST.days = ST.days || {}; ST.coins = ST.coins || 0; ST.owned = ST.owned || ['turtle']; ST.chr = ST.chr || 'turtle';
 let GOAL = ST.goal;
@@ -178,6 +178,24 @@ const sCoin = () => { pluck(784, 0, .09, .5); pluck(988, .08, .08, .7); };
 const sFlip = () => noise(.14, 700, .05);
 const sPlace = () => pluck(587, 0, .08, .35);
 const sWin = () => { [392, 494, 587, 784].forEach((f, i) => pluck(f, i * .1, .11, 1)); };
+/* 朗讀：瀏覽器內建語音 */
+const TTS_OK = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+let ttsVoice = null, ttsBtn = null;
+function pickVoice() { try { const vs = speechSynthesis.getVoices(); ttsVoice = vs.find(v => /zh[-_]TW/i.test(v.lang)) || vs.find(v => /zh[-_](HK|Hant)/i.test(v.lang)) || vs.find(v => /^zh/i.test(v.lang)) || null; } catch (e) {} }
+if (TTS_OK) { pickVoice(); try { speechSynthesis.onvoiceschanged = pickVoice; } catch (e) {} }
+const ttsNorm = t => String(t || '').replace(/\(\d+\)/g, '').replace(/第(\d+)-(\d+)條/g, '第$1條之$2').replace(/[「」＿_]/g, '').replace(/\s+/g, ' ');
+function stopSpeak() { if (!TTS_OK) return; try { speechSynthesis.cancel(); } catch (e) {} if (ttsBtn) ttsBtn.classList.remove('on'); }
+function speak(text, btn) {
+  if (!TTS_OK || !text) return; stopSpeak();
+  try {
+    const u = new SpeechSynthesisUtterance(ttsNorm(text));
+    u.lang = ttsVoice ? ttsVoice.lang : 'zh-TW'; if (ttsVoice) u.voice = ttsVoice; u.rate = ST.set.ttsRate || 1;
+    ttsBtn = btn || null; if (ttsBtn) ttsBtn.classList.add('on');
+    u.onend = u.onerror = () => { if (ttsBtn === btn && btn) btn.classList.remove('on'); };
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+const SPEAKER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>';
 const buzz = ms => { if (!ST.set.vib) return; try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
 document.addEventListener('pointerdown', e => { if (e.target.closest('.btn,.opt,.tile,.start,.tfb,.pc,.mi,.chip,.mode,.tabs a,.seg a,.slot,.charcard,.icon-btn,.seqpool button,.go,.mtab,.side,.orb,.sw')) sTap(); }, true);
 const GEAR = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.3 7.3 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.3 7.3 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.3 7.3 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>';
@@ -194,13 +212,15 @@ function openSettings() {
   el.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="設定"><div class="grab"></div><div class="shead"><span></span><h2>設定</h2><button class="sdone" id="sclose">完成</button></div>
     <div class="sgroup">${sw('sound', '音效')}<label class="srow vol ${ST.set.sound ? '' : 'off'}"><span><b>音量</b></span><input type="range" id="vol" min="0" max="1" step="0.05" value="${ST.set.vol}"></label>${sw('vib', '震動', '答錯時手機震一下')}${sw('anim', '動畫', '角色動作、紙花、滑入效果')}</div>
     <div class="sgroup">${sw('hl', '螢光筆標色', '數字、主體、例外字上色')}${sw('notes', '註釋', '專有名詞可以點開解釋')}</div>
+    ${TTS_OK ? `<div class="sgroup">${sw('tts', '自動朗讀', '題目出現時念題目，答完念條文')}<label class="srow"><span><b>語速</b></span><input type="range" id="ttsRate" min="0.6" max="1.6" step="0.1" value="${ST.set.ttsRate || 1}"></label></div>` : ''}
     </div>`;
   document.body.appendChild(el);
   const close = () => { el.classList.add('out'); setTimeout(() => el.remove(), 200); if (!document.body.classList.contains('playing')) route(); };
   el.addEventListener('click', e => { if (e.target === el) close(); });
   document.getElementById('sclose').onclick = close;
   el.querySelectorAll('.sw').forEach(c => c.onchange = () => { ST.set[c.dataset.k] = c.checked; save(); applyAnim(); el.querySelector('.vol').classList.toggle('off', !ST.set.sound); if (c.dataset.k === 'sound' && c.checked) sOk(); });
-    const v = document.getElementById('vol'); v.oninput = () => { ST.set.vol = +v.value; save(); }; v.onchange = () => sOk();
+    const tr = document.getElementById('ttsRate'); if (tr) { tr.oninput = () => { ST.set.ttsRate = +tr.value; save(); }; tr.onchange = () => speak('每日目標三十題'); }
+  const v = document.getElementById('vol'); v.oninput = () => { ST.set.vol = +v.value; save(); }; v.onchange = () => sOk();
 }
 
 /* ---------- 印章 ---------- */
@@ -220,7 +240,7 @@ function setTab(v) {
   if (!a) return;
   if (n) { if (!d) { d = document.createElement('span'); d.className = 'dot'; a.appendChild(d); } d.textContent = n > 99 ? '99+' : n; } else if (d) d.remove();
 }
-function reset() { if (cleanup) { cleanup(); cleanup = null; } closePop(); document.querySelectorAll('.dock').forEach(d => d.remove()); document.body.classList.remove('playing'); window.scrollTo(0, 0); }
+function reset() { stopSpeak(); if (cleanup) { cleanup(); cleanup = null; } closePop(); document.querySelectorAll('.dock').forEach(d => d.remove()); document.body.classList.remove('playing'); window.scrollTo(0, 0); }
 function route() {
   reset();
   const h = (location.hash || '#home').slice(1);
@@ -423,7 +443,7 @@ function runItems(items, opt) {
   const S = { i: 0, right: 0, combo: 0, best: 0, answered: 0, done: false, reveal: null };
   const pending = [];
   const next = () => {
-    if (!S.done) return; document.querySelectorAll('.dock').forEach(d => d.remove()); S.i++;
+    if (!S.done) return; stopSpeak(); document.querySelectorAll('.dock').forEach(d => d.remove()); S.i++;
     const now = Date.now(), ready = pending.filter(p => p.at <= now);
     ready.forEach(p => { pending.splice(pending.indexOf(p), 1); items.splice(S.i, 0, p.it); });
     if (S.i >= items.length && pending.length) { pending.sort((a, b) => a.at - b.at); items.push(...pending.splice(0).map(p => p.it)); }
@@ -437,7 +457,7 @@ function runItems(items, opt) {
   };
   const card = (it, tab, body) => {
     const fresh = !ST.r[it.id];
-    return top() + `<section class="qcard"><span class="qtab">${esc(tab)}</span><span class="qbadge ${fresh ? 'new' : 'rev'}">${fresh ? 'New' : '複習'}</span><div class="qbody">${body}</div><div class="qsrc" id="qs"></div></section>`;
+    return top() + `<section class="qcard"><span class="qtab">${esc(tab)}</span><span class="qbadge ${fresh ? 'new' : 'rev'}">${fresh ? 'New' : '複習'}</span><div class="qbody">${body}</div>${TTS_OK ? `<button class="qspeak" id="qsp" aria-label="朗讀">${SPEAKER}</button>` : ''}<div class="qsrc" id="qs"></div></section>`;
   };
   function foot() {
     const d = document.createElement('div'); d.className = 'dock qfoot';
@@ -456,22 +476,27 @@ function runItems(items, opt) {
     if (!ok && opt.session && (it.retry || 0) < 2) pending.push({ at: Date.now() + retryMs(), it: { t: it.t, id: it.id, retry: (it.retry || 0) + 1 } });
     const qf = document.getElementById('qf'); if (qf) { qf.className = 'qflame' + (S.combo > 1 ? ' hot pop' : ''); qf.innerHTML = S.combo > 1 ? `<b>${S.combo}</b>` : FLAME; }
     const orb = document.getElementById('orb'), mc = document.getElementById('mc');
-    if (orb) { orb.disabled = false; orb.classList.add('ready', ok ? 'good' : 'bad'); mc.innerHTML = CHARS.svg(ST.chr, ok ? 'happy' : 'sad'); mc.className = 'orbchr ' + (ok ? 'jump' : 'sadshake'); if (ok) confetti(orb, S.combo >= 5 ? 22 : 12); orb.focus({ preventScroll: true }); }
-    const peek = document.getElementById('peek'); if (peek) peek.disabled = true;
+    if (orb) { orb.disabled = false; orb.classList.add('ready', ok ? 'good' : 'bad'); mc.innerHTML = CHARS.svg(ST.chr, ok ? 'happy' : 'sad'); mc.className = 'orbchr ' + (ok ? 'jump' : 'sadshake'); if (ok) confetti(orb, S.combo >= 5 ? 22 : 12); }
+    const peek = document.getElementById('peek'), art0 = document.getElementById('art');
+    if (art0) { art0.hidden = false; art0.className = 'side nextbtn'; art0.innerHTML = `<span>${S.i + 1 < items.length + pending.length ? '下一題' : '完成'}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>`; art0.onclick = next; art0.setAttribute('aria-label', '下一題'); art0.focus({ preventScroll: true }); }
+    if (peek) { if (src && src.full) { peek.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M9 8h6M9 12h4"/></svg><span>條文</span>'; peek.onclick = () => { const f = document.getElementById('full'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } }; } else peek.disabled = true; }
     if (src) {
+      S.sayA = src.tts || '';
+      if (ST.set.tts && S.sayA) setTimeout(() => speak(S.sayA, document.getElementById('qsp')), 600);
       const qs = document.getElementById('qs'); if (qs) qs.textContent = src.label;
       const ex = document.getElementById('ex'); if (ex && src.html) { ex.innerHTML = src.html; bindSrc(ex); }
-      const art = document.getElementById('art');
-      if (art && src.full && ex) { art.hidden = false; ex.insertAdjacentHTML('beforeend', `<div class="fullart" id="full" hidden>${src.full}</div>`); art.onclick = () => { const f = document.getElementById('full'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } }; }
+      if (src.full && ex) ex.insertAdjacentHTML('beforeend', `<div class="fullart" id="full" hidden>${src.full}</div>`);
     }
   }
-  const srcOf = (law, no, quote, extra) => ({ label: `出處　${law} ${no}`, html: answerHTML(quote, extra), full: `<div class="fh">${esc(law)} ${esc(no)}</div>${artHTML(law, no, { quote, hl: true })}` });
+  const srcOf = (law, no, quote, extra) => ({ tts: `${law}${no}。${quote || ''}`, label: `出處　${law} ${no}`, html: answerHTML(quote, extra), full: `<div class="fh">${esc(law)} ${esc(no)}</div>${artHTML(law, no, { quote, hl: true })}` });
   function draw() {
-    window.scrollTo(0, 0); S.done = false; S.reveal = null;
+    window.scrollTo(0, 0); S.done = false; S.reveal = null; S.say = null; S.sayA = '';
     document.querySelectorAll('.dock').forEach(d => d.remove());
     const it = items[S.i];
     ({ q: drawQ, z: drawZ, t: drawT, m: drawM, s: drawS, o: drawO })[it.t](it);
     foot();
+    const sp = document.getElementById('qsp');
+    if (sp) { sp.onclick = () => { if (sp.classList.contains('on')) { stopSpeak(); return; } speak(S.done ? S.sayA : (S.say && S.say()), sp); }; if (ST.set.tts && S.say) setTimeout(() => speak(S.say(), sp), 250); }
     document.getElementById('x').onclick = opt.back;
     document.getElementById('qset').onclick = openSettings;
   }
@@ -485,6 +510,7 @@ function runItems(items, opt) {
     const bs = [...$app.querySelectorAll('.opt')], ck = perm.indexOf(q.ans);
     const go = k => { choose(bs, ck, k); const sr = srcOf(q.law, q.no, q.quote, [q.q, q.opts[q.ans]]); if (q.ex) sr.label = `${q.ex}考題　依現行 ${q.law} ${q.no}`; result(k === ck, sr); };
     bs.forEach(b => b.onclick = () => go(+b.dataset.k));
+    S.say = () => q.q + '。' + perm.map((p, k) => L[k] + '，' + q.opts[p]).join('。');
     S.reveal = () => go(-1);
   }
   function drawZ(it) {
@@ -494,6 +520,7 @@ function runItems(items, opt) {
     const bs = [...$app.querySelectorAll('.opt')], bl = document.getElementById('bl');
     const go = k => { const ok = k === z.ans; choose(bs, z.ans, k); bl.textContent = z.opts[z.ans]; bl.classList.add(ok ? 'filled' : 'bad'); result(ok, srcOf(z.law, z.no, z.quote)); };
     bs.forEach(b => b.onclick = () => go(+b.dataset.k));
+    S.say = () => z.pre + '，空格，' + z.post + '。選項：' + z.opts.join('、');
     S.reveal = () => go(-1);
   }
   function drawT(it) {
@@ -502,13 +529,15 @@ function runItems(items, opt) {
       `<div class="tfbtns"><button class="tfb x" data-v="0" aria-label="錯">${TF_X}</button><button class="tfb o" data-v="1" aria-label="對">${TF_O}</button></div><div id="ex"></div>`;
     const go = v => { const ok = v === t.ok; const tc = document.getElementById('tc'); tc.classList.add(t.ok ? 'yes' : 'no'); if (!ok) tc.classList.add('shake'); $app.querySelectorAll('.tfb').forEach(b => b.disabled = true); result(ok, srcOf(t.law, t.no, t.quote)); };
     tfBind(document.getElementById('tc'), go);
+    S.say = () => t.s + '。這句話對還是錯？';
     S.reveal = () => go(null);
   }
   function drawM(it) {
     const set = D.matches[it.id]; const left = shuffle(set.map((p, i) => ({ i, s: p.a }))), right = shuffle(set.map((p, i) => ({ i, s: p.b })));
     $app.innerHTML = card(it, '配對', `<div class="match"><div class="col">${left.map(x => `<button class="mi a" data-i="${x.i}">${esc(x.s)}</button>`).join('')}</div><div class="col">${right.map(x => `<button class="mi b" data-i="${x.i}">${esc(x.s)}</button>`).join('')}</div></div>`) + `<div id="ex"></div>`;
     let sel = null, errs = 0, got = 0;
-    const src = () => ({ label: '出處　' + [...new Set(set.map(p => p.law + ' ' + p.no))].join('、'), html: `<div class="ans">${set.map(p => `<div>${esc(p.a)}　<b class="hl-n">${esc(p.b)}</b></div>`).join('')}</div>` });
+    S.say = () => '請把左右兩邊配對。';
+    const src = () => ({ tts: set.map(p => p.a + '，' + p.b).join('。'), label: '出處　' + [...new Set(set.map(p => p.law + ' ' + p.no))].join('、'), html: `<div class="ans">${set.map(p => `<div>${esc(p.a)}　<b class="hl-n">${esc(p.b)}</b></div>`).join('')}</div>` });
     const pick = b => {
       if (b.classList.contains('ok') || S.done) return;
       if (!sel || sel.classList.contains(b.classList.contains('a') ? 'a' : 'b')) { $app.querySelectorAll('.mi.sel').forEach(x => x.classList.remove('sel')); sel = b; b.classList.add('sel'); return; }
@@ -523,7 +552,8 @@ function runItems(items, opt) {
     const s = SQ[it.id]; const pool = shuffle(s.steps.map((t, i) => ({ t, i })));
     $app.innerHTML = card(it, '排序', `<p class="qtext">${esc(s.title)}</p><div class="seqslots">${s.steps.map((_, i) => `<div class="seqslot ${i === 0 ? 'next' : ''}" data-i="${i}"></div>`).join('')}</div>`) + `<div class="seqpool">${pool.map(x => `<button data-i="${x.i}">${esc(x.t)}</button>`).join('')}</div><div id="ex"></div>`;
     let n = 0, errs = 0; const slots = [...$app.querySelectorAll('.seqslot')];
-    const src = () => ({ label: `出處　${s.law} ${s.nos.join('、')}`, html: '', full: s.nos.map(no => `<div class="fh">${esc(s.law)} ${esc(no)}</div>${artHTML(s.law, no, { hl: true })}`).join('') });
+    S.say = () => s.title + '。請排出順序。';
+    const src = () => ({ tts: s.title + '：' + s.steps.join('，接著，'), label: `出處　${s.law} ${s.nos.join('、')}`, html: '', full: s.nos.map(no => `<div class="fh">${esc(s.law)} ${esc(no)}</div>${artHTML(s.law, no, { hl: true })}`).join('') });
     $app.querySelectorAll('.seqpool button').forEach(b => b.onclick = () => {
       if (S.done) return;
       if (+b.dataset.i === n) { slots[n].textContent = b.textContent; slots[n].classList.remove('next'); slots[n].classList.add('f'); b.remove(); n++; sPlace(); if (slots[n]) slots[n].classList.add('next'); if (n === s.steps.length) result(errs <= 1, src()); }
@@ -535,6 +565,7 @@ function runItems(items, opt) {
     const o = O[it.id]; const cards = shuffle(o.parts.map((t, i) => ({ t, i })).concat([{ t: o.x, i: -1 }]));
     $app.innerHTML = card(it, LAWTAB[lawOfId(it.id)], `<div class="build" id="bd">${o.parts.map(() => '<span class="slotc"></span>').join('')}</div>`) +
       `<div class="cardpool">${cards.map(c => `<button class="pc" data-i="${c.i}">${hlText(c.t, false, true)}</button>`).join('')}</div><div id="ex"></div>`;
+    S.say = () => '請把條文排出正確順序。';
     let n = 0, errs = 0; const slots = [...$app.querySelectorAll('.slotc')]; slots[0].classList.add('next');
     $app.querySelectorAll('.pc').forEach(b => b.onclick = () => {
       if (S.done) return;
