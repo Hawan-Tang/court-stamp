@@ -175,7 +175,16 @@ function pluck(f, st, vol, dur) {
     });
   } catch (e) {}
 }
-const sTap = () => pluck(784, 0, .05, .08);
+/* 按鈕音「泡泡」：正弦波往上滑音，很短 */
+const sTap = () => {
+  if (!ST.set.sound) return;
+  try {
+    const a = ctx(), t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(420, t); o.frequency.exponentialRampToValueAtTime(1150, t + .06);
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(.0002, .3 * ST.set.vol), t + .006); g.gain.exponentialRampToValueAtTime(.0001, t + .075);
+    o.connect(g).connect(outNode(a)); o.start(t); o.stop(t + .1);
+  } catch (e) {}
+};
 function bell(f, st, vol, dur) {
   if (!ST.set.sound) return;
   try {
