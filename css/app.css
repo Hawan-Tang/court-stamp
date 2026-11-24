@@ -596,5 +596,6 @@ body.playing main{touch-action:pan-y}
 main{padding-bottom:120px}
 
 /* v10：換題滑動動畫 */
-body.playing main{overflow-x:hidden;overflow-x:clip}
+body.playing{overflow-x:hidden;overflow-x:clip}
 body.playing .qcard{will-change:transform;touch-action:pan-y}
+body.playing .qslide{will-change:transform;touch-action:pan-y}
