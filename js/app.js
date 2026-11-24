@@ -176,8 +176,19 @@ function pluck(f, st, vol, dur) {
   } catch (e) {}
 }
 const sTap = () => pluck(784, 0, .05, .08);
-const sOk = () => { const c = Math.max(0, Math.min(comboNow - 1, 5)), k = semi(c); pluck(587 * k, 0, .32, .55); pluck(784 * k, .09, .3, .8); if (comboNow && comboNow % 5 === 0) { pluck(988, .22, .18, .8); pluck(1175, .32, .14, 1); } };
-const sBad = () => { if (!ST.set.sound) return; tone([[294, .28, 0, 'triangle', .22, 220]]); };
+function bell(f, st, vol, dur) {
+  if (!ST.set.sound) return;
+  try {
+    const a = ctx(), t = a.currentTime + (st || 0), v = Math.max(0.0002, vol * ST.set.vol);
+    [[1, 1, dur], [2.76, .18, dur * .45], [5.4, .06, dur * .25]].forEach(([m, k, d]) => {
+      const o = a.createOscillator(), g = a.createGain(); o.type = 'sine'; o.frequency.value = f * m;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v * k, t + .005); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      o.connect(g).connect(outNode(a)); o.start(t); o.stop(t + d + .05);
+    });
+  } catch (e) {}
+}
+const sOk = () => { const k = semi(Math.max(0, Math.min(comboNow - 1, 4)) * 2); bell(784 * k, 0, .28, .9); bell(1175 * k, .11, .26, 1.3); if (comboNow && comboNow % 5 === 0) bell(1568, .26, .16, 1.4); };
+const sBad = () => { if (!ST.set.sound) return; try { const a = ctx(), lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700; lp.connect(outNode(a)); [[233, 0], [196, .13]].forEach(([f, st]) => { const t = a.currentTime + st, o = a.createOscillator(), g = a.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * .92, t + .12); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(.5 * ST.set.vol, t + .01); g.gain.exponentialRampToValueAtTime(0.0001, t + .14); o.connect(g).connect(lp); o.start(t); o.stop(t + .18); }); } catch (e) {} };
 const sStamp = () => { tone([[140, .22, 0, 'sine', .4, 70]]); };
 const sCoin = () => { pluck(880, 0, .2, .5); pluck(1175, .08, .18, .7); };
 const sFlip = () => noise(.14, 900, .12);
@@ -203,7 +214,7 @@ function speak(text, btn) {
 }
 const SPEAKER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>';
 const buzz = ms => { if (!ST.set.vib) return; try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
-document.addEventListener('pointerdown', e => { if (e.target.closest('.btn,.opt,.tile,.start,.tfb,.pc,.mi,.chip,.mode,.tabs a,.seg a,.slot,.charcard,.icon-btn,.seqpool button,.go,.mtab,.side,.orb,.sw')) sTap(); }, true);
+document.addEventListener('pointerdown', e => { if (e.target.closest('.btn,.opt,.tile,.start,.tfb,.pc,.mi,.chip,.mode,.tabs a,.seg a,.slot,.charcard,.icon-btn,.seqpool button,.go,.mtab,.side,.fbtn,.sw')) sTap(); }, true);
 const GEAR = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.3 7.3 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.3 7.3 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.3 7.3 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>';
 function applyAnim() { document.body.classList.toggle('noanim', !ST.set.anim); }
 applyAnim();
@@ -494,12 +505,23 @@ function runItems(items, opt) {
       viewIdx = cur - 1; showHist(viewIdx);
     }
   }
-  let tx = null, ty = null;
-  const tStart = e => { if (e.target.closest('.tfcard,.sheet-wrap,input')) { tx = null; return; } const p = e.touches[0]; tx = p.clientX; ty = p.clientY; };
-  const tEnd = e => { if (tx === null) return; const p = e.changedTouches[0], dx = p.clientX - tx, dy = p.clientY - ty; tx = null; if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.6) nav(dx < 0 ? 1 : -1); };
+  let tx = null, ty = null, lx = 0, ly = 0, horiz = null;
+  const qcardEl = () => document.querySelector('.qcard');
+  const tStart = e => { if (e.touches.length > 1 || e.target.closest('.tfcard,.sheet-wrap,input,.toast')) { tx = null; return; } const p = e.touches[0]; tx = lx = p.clientX; ty = ly = p.clientY; horiz = null; };
+  const tMove = e => {
+    if (tx === null) return; const p = e.touches[0]; lx = p.clientX; ly = p.clientY;
+    const dx = lx - tx, dy = ly - ty;
+    if (horiz === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) horiz = Math.abs(dx) > Math.abs(dy);
+    if (horiz) { const c = qcardEl(); if (c) { c.style.transition = 'none'; c.style.transform = `translateX(${dx * 0.35}px)`; } }
+  };
+  const tEnd = () => {
+    if (tx === null) return; const dx = lx - tx, dy = ly - ty; tx = null;
+    const c = qcardEl(); if (c) { c.style.transition = 'transform .2s'; c.style.transform = ''; }
+    if (horiz && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.3) nav(dx < 0 ? 1 : -1);
+  };
   const kd = e => { if (document.getElementById('sheet') || !document.querySelector('.qcard') || document.querySelector('.tfcard')) return; if (e.key === 'ArrowRight') nav(1); else if (e.key === 'ArrowLeft') nav(-1); };
-  document.addEventListener('touchstart', tStart, { passive: true }); document.addEventListener('touchend', tEnd, { passive: true }); document.addEventListener('keydown', kd);
-  cleanup = () => { document.removeEventListener('touchstart', tStart); document.removeEventListener('touchend', tEnd); document.removeEventListener('keydown', kd); $app.classList.remove('static'); };
+  document.addEventListener('touchstart', tStart, { passive: true }); document.addEventListener('touchmove', tMove, { passive: true }); document.addEventListener('touchend', tEnd, { passive: true }); document.addEventListener('touchcancel', tEnd, { passive: true }); document.addEventListener('keydown', kd);
+  cleanup = () => { document.removeEventListener('touchstart', tStart); document.removeEventListener('touchmove', tMove); document.removeEventListener('touchend', tEnd); document.removeEventListener('touchcancel', tEnd); document.removeEventListener('keydown', kd); $app.classList.remove('static'); };
   const next = () => {
     if (!S.done) return; stopSpeak(); viewIdx = null; document.querySelectorAll('.dock').forEach(d => d.remove()); S.i++;
     const now = Date.now(), ready = pending.filter(p => p.at <= now);
@@ -519,12 +541,9 @@ function runItems(items, opt) {
   };
   function foot() {
     const d = document.createElement('div'); d.className = 'dock qfoot';
-    d.innerHTML = `<div class="in"><button class="side" id="peek"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5 11-11"/></svg><span>查看答案</span></button>
-      <button class="orb" id="orb" disabled aria-label="下一題"><span class="orbchr" id="mc">${CHARS.svg(ST.chr, 'idle')}</span><span class="orbgo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></span></button>
-      <button class="side" id="art" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M9 8h6M9 12h4"/></svg><span>條文</span></button></div>`;
+    d.innerHTML = `<div class="in"><button class="fbtn ghost" id="peek"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5 11-11"/></svg><span>查看答案</span></button><button class="fbtn primary" id="art" hidden></button></div>`;
     document.body.appendChild(d);
     document.getElementById('peek').onclick = () => { if (!S.done && S.reveal) S.reveal(); };
-    document.getElementById('orb').onclick = next;
   }
   function result(ok, src) {
     if (S.done) return; S.done = true;
@@ -534,10 +553,10 @@ function runItems(items, opt) {
     if (!ok && opt.session && (it.retry || 0) < 2) pending.push({ at: Date.now() + retryMs(), it: { t: it.t, id: it.id, retry: (it.retry || 0) + 1 } });
     const qf = document.getElementById('qf'); if (qf) { qf.className = 'qflame' + (S.combo > 1 ? ' hot pop' : ''); qf.innerHTML = S.combo > 1 ? `<b>${S.combo}</b>` : FLAME; }
     const orb = document.getElementById('orb'), mc = document.getElementById('mc');
-    if (orb) { orb.disabled = false; orb.classList.add('ready', ok ? 'good' : 'bad'); mc.innerHTML = CHARS.svg(ST.chr, ok ? 'happy' : 'sad'); mc.className = 'orbchr ' + (ok ? 'jump' : 'sadshake'); if (ok) confetti(orb, S.combo >= 5 ? 22 : 12); }
+    if (ok) { const qc = document.querySelector('.qcard'); if (qc) confetti(qc, S.combo >= 5 ? 22 : 12); }
     const peek = document.getElementById('peek'), art0 = document.getElementById('art');
-    if (art0) { art0.hidden = false; art0.className = 'side nextbtn'; art0.innerHTML = `<span>${S.i + 1 < items.length + pending.length ? '下一題' : '完成'}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>`; art0.onclick = next; art0.setAttribute('aria-label', '下一題'); art0.focus({ preventScroll: true }); }
-    if (peek) { if (src && src.full) { peek.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M9 8h6M9 12h4"/></svg><span>條文</span>'; peek.onclick = () => { const f = document.getElementById('full'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } }; } else peek.disabled = true; }
+    if (art0) { art0.hidden = false; art0.className = 'fbtn primary nextbtn'; art0.innerHTML = `<span>${S.i + 1 < items.length + pending.length ? '下一題' : '完成'}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>`; art0.onclick = next; art0.setAttribute('aria-label', '下一題'); art0.focus({ preventScroll: true }); }
+    if (peek) { if (src && src.full) { peek.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M9 8h6M9 12h4"/></svg><span>條文</span>'; peek.classList.add('art'); peek.onclick = () => { const f = document.getElementById('full'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } }; } else peek.disabled = true; }
     setTimeout(snap, 0);
     if (src) {
       S.sayA = src.tts || '';
