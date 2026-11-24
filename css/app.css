@@ -637,3 +637,4 @@ body.playing .qslide{will-change:transform;touch-action:pan-y}
 .opt.dim:has(.why)>span{opacity:.75}
 .opt.dim:has(.why) .why{opacity:1}
 .end ~ section .why,section .why{display:block;font-size:14px;font-weight:500;margin-top:2px}
+.qctx mark.blankno{background:var(--indigo);color:#fff;border-radius:6px;padding:0 6px;font-weight:900}
