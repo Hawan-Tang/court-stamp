@@ -320,18 +320,16 @@ function confetti(el, n) {
 
 /* ========== 今日學習 ========== */
 const ROUND = 15;
-function buildSession() {
-  const now = Date.now(), inMode = id => ST.mode === 'all' ? !(Q[id] && Q[id].gen) : lawOfId(id) === ST.mode, gm = ST.mode === 'chi' || ST.mode === 'cie';
-  const due = Object.keys(ST.srs).filter(id => ST.srs[id].due <= now && (Q[id] || Z[id] || O[id]) && inMode(id)).sort((a, b) => ST.srs[a].due - ST.srs[b].due).slice(0, 8).map(id => ({ t: typeOf(id), id }));
-  const fresh = [];
-  if (gm) GEN.filter(q => q.subj === ST.mode && !ST.r[q.id]).sort((a, b) => a.id < b.id ? 1 : -1).slice(0, ROUND).forEach(q => fresh.push({ t: 'q', id: q.id }));
-  if (!gm) for (const lv of LV) { if (ST.mode !== 'all' && lawOf(lv.unit) !== ST.mode) continue; for (const [t, id] of lv.items) { if (fresh.length >= ROUND) break; if (!ST.r[id] && !fresh.some(x => x.id === id)) fresh.push({ t, id }); } if (fresh.length >= ROUND) break; }
-  const out = []; let a = 0, b = 0;
-  while (out.length < ROUND && (a < due.length || b < fresh.length)) { if (a < due.length && (out.length % 2 === 0 || b >= fresh.length)) out.push(due[a++]); else if (b < fresh.length) out.push(fresh[b++]); }
-  if (out.length < ROUND) { const weak = shuffle((gm ? GEN : D.questions).filter(q => inMode(q.id) && !out.some(x => x.id === q.id))).slice(0, ROUND - out.length).map(q => ({ t: 'q', id: q.id })); out.push(...weak); }
+/* 開始學習：只出沒做過的新題，不混複習（複習去錯題本、收藏） */
+function sessionPool(mode) {
+  if (mode === 'chi' || mode === 'cie') return GEN.filter(q => q.subj === mode).sort((a, b) => a.id < b.id ? 1 : -1).map(q => ({ t: 'q', id: q.id }));
+  const out = [], seen = new Set();
+  for (const lv of LV) { if (mode !== 'all' && lawOf(lv.unit) !== mode) continue; for (const [t, id] of lv.items) if (!seen.has(id)) { seen.add(id); out.push({ t, id }); } }
   return out;
 }
-function startSession() { reset(); goalJustHit = false; runItems(buildSession(), { session: true, back: () => goTab('home') }); }
+function poolProgress(mode) { const p = sessionPool(mode); return [p.filter(x => ST.r[x.id]).length, p.length]; }
+function buildSession() { return sessionPool(ST.mode).filter(x => !ST.r[x.id]).slice(0, ROUND); }
+function startSession() { const items = buildSession(); if (!items.length) { goTab('wrong'); return; } reset(); goalJustHit = false; runItems(items, { session: true, back: () => goTab('home') }); }
 const COIN = '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="var(--verm)" stroke-width="2.6"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="var(--verm)" stroke-width="1.4"/></svg>';
 const FLAME = '<svg class="ic" viewBox="0 0 24 24"><path d="M12 2c1 4 5 5.5 5 11a5 5 0 0 1-10 0c0-2.5 1.2-4 2.2-5 .3 1.7 1 2.6 2 3-.6-3.4.4-6.5.8-9z" fill="#F08A24"/><path d="M12 13c.6 1.5 2.4 2 2.4 4a2.4 2.4 0 0 1-4.8 0c0-1.3.9-2.3 2.4-4z" fill="#FFD23F"/></svg>';
 const MODES = [
@@ -351,6 +349,7 @@ function gauge(p) {
 function vHome() {
   const d = ST.days[today()] || { right: 0 }, wk = weekDays(), tk = today(), st = streak();
   const m = MODES.find(x => x.k === ST.mode) || MODES[0];
+  const pg = poolProgress(m.k), allDone = pg[1] && pg[0] >= pg[1];
   const hit = d.right >= GOAL;
   const allR = Object.values(ST.r).reduce((a, r) => [a[0] + r[0], a[1] + r[1]], [0, 0]);
   const acc = allR[0] + allR[1] ? Math.round(allR[0] / (allR[0] + allR[1]) * 100) : null;
@@ -370,8 +369,8 @@ function vHome() {
     <div class="mc-in">
       <button class="hero-chr" id="hc" aria-label="${esc((CHARS.list.find(c => c.id === ST.chr) || {}).name || '')}">${CHARS.svg(ST.chr, 'idle')}</button>
       ${acc !== null ? `<a class="acc" href="#wrong">答對率 ${acc}% ›</a>` : ''}
-      <div class="mc-row"><div><h2>${m.t}</h2><div class="goal">每日目標 <b class="num">${GOAL}</b> 題 <button class="goaledit" id="goalEdit" aria-label="修改每日目標"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button></div></div>${gauge(d.right / GOAL)}</div>
-      <button class="start" id="st">${hit ? '★ 額外學習' : '開始學習'}</button>
+      <div class="mc-row"><div><h2>${m.t}</h2><div class="prog num">${pg[0]} / ${pg[1]}<i class="pbar"><i style="width:${pg[1] ? pg[0] / pg[1] * 100 : 0}%"></i></i></div><div class="goal">每日目標 <b class="num">${GOAL}</b> 題 <button class="goaledit" id="goalEdit" aria-label="修改每日目標"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button></div></div>${gauge(d.right / GOAL)}</div>
+      <button class="start" id="st">${allDone ? '全部做完・去複習' : hit ? '★ 額外學習' : '開始學習'}</button>
     </div>
   </section>
   <section class="infocard"><a class="ic-h" href="#map"><h2>學習資訊</h2><span>›</span></a>
@@ -512,10 +511,23 @@ function bindFav(id) {
   paint();
   b.onclick = () => { if (ST.fav[id]) delete ST.fav[id]; else { ST.fav[id] = Date.now(); pluck(880, 0, .14, .3); pluck(1320, .06, .1, .4); } save(); paint(); b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); };
 }
-const WHY = window.WHY || {};
+const WHY = window.WHY || {}, ZH = window.ZH || {};
+/* 英文題答完後：題目、文章、選項的中文 */
+function addZh(bs, q, perm) {
+  const z = ZH[q.id]; if (!z) return;
+  bs.forEach((b, k) => { const t = z.opts && z.opts[perm[k]]; const sp = b.children[1]; if (t && sp) sp.insertAdjacentHTML('beforeend', `<small class="zh">${esc(t)}</small>`); });
+  const qt = $app.querySelector('.qcard .qtext'); if (z.q && qt) qt.insertAdjacentHTML('afterend', `<p class="qzh">${esc(z.q)}</p>`);
+  const cx = $app.querySelector('.qcard .qctx'); if (z.ctx && cx) cx.insertAdjacentHTML('afterend', `<div class="qctx zh">${esc(z.ctx)}</div>`);
+}
 /* 選項解說：why[原始選項索引]，「正確：」「錯：」開頭的那兩個字拿掉，改用顏色表示 */
 const whyText = (id, orig) => { const w = WHY[id]; return w && w[orig] ? w[orig].replace(/^(正確|錯)：\s*/, '') : ''; };
 function addWhy(bs, id, perm) { if (!WHY[id]) return; bs.forEach((b, k) => { const t = whyText(id, perm[k]); const sp = b.children[1]; if (t && sp) sp.insertAdjacentHTML('beforeend', `<small class="why">${esc(t)}</small>`); }); }
+/* 選項順序：每次出題都重排，正確答案用抽籤袋輪流放在 A～D，分布平均 */
+let posBag = [];
+function permFor(ans) {
+  if (!posBag.length) posBag = shuffle([0, 1, 2, 3]);
+  const others = shuffle([0, 1, 2, 3].filter(i => i !== ans)); others.splice(posBag.pop(), 0, ans); return others;
+}
 const accepts = (q, orig) => orig === q.ans || (q.alt || []).includes(orig);
 /* 題組文章；英文克漏字沒有題幹，就把文章裡該格的號碼標出來 */
 const ctxHTML = q => { if (!q.ctx) return ''; let h = esc(q.ctx); if (!q.q && q.no) h = h.replace(new RegExp('(^|[^0-9])(' + q.no + ')(?![0-9])', 'g'), '$1<mark class="blankno">$2</mark>'); return `<div class="qctx">${h}</div>`; };
@@ -692,12 +704,12 @@ function runItems(items, opt) {
   function markX(b) { b.insertAdjacentHTML('beforeend', '<span class="mk no" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></span>'); b.classList.add('shake'); }
   function choose(bs, ck, k) { bs.forEach(x => x.disabled = true); bs.forEach((x, i) => { if (i === ck) { x.classList.add('right'); markO(x); } else if (i === k) { x.classList.add('wrong'); markX(x); } else x.classList.add('dim'); }); }
   function drawG(it) {
-    const q = Q[it.id], perm = shuffle([0, 1, 2, 3]);
+    const q = Q[it.id], perm = permFor(q.ans);
     $app.innerHTML = card(it, (q.part || LAWTAB[q.subj]) + '・' + q.ex + '考題', qHead(q)) +
       `<div class="opts">${perm.map((p, k) => `<button class="opt" data-k="${k}"><span class="L">${L[k]}</span><span>${esc(q.opts[p])}</span></button>`).join('')}</div><div id="ex"></div>`;
     const bs = [...$app.querySelectorAll('.opt')], ck = perm.indexOf(q.ans);
     const go = k => {
-      const ok = k >= 0 && accepts(q, perm[k]); choose(bs, ok ? k : ck, k);
+      const ok = k >= 0 && accepts(q, perm[k]); choose(bs, ok ? k : ck, k); addZh(bs, q, perm); addWhy(bs, q.id, perm);
       result(ok, { tts: '答案是' + q.opts[q.ans], label: `${q.ex}${LAWN[q.subj]}　第 ${q.no} 題`, html: `<div class="ans"><q>${L[ck]}　${esc(q.opts[q.ans])}</q></div>` });
     };
     bs.forEach(b => b.onclick = () => go(+b.dataset.k));
@@ -706,7 +718,7 @@ function runItems(items, opt) {
   }
   function drawQ(it) {
     if (Q[it.id].gen) return drawG(it);
-    const q = Q[it.id], perm = shuffle([0, 1, 2, 3]);
+    const q = Q[it.id], perm = permFor(q.ans);
     $app.innerHTML = card(it, LAWTAB[lawOfId(it.id)] + (q.ex ? '・' + q.ex + '考題' : ''), `<p class="qtext">${hlText(q.q, true)}</p>`) +
       `<div class="opts">${perm.map((p, k) => `<button class="opt" data-k="${k}"><span class="L">${L[k]}</span><span>${esc(q.opts[p])}</span></button>`).join('')}</div><div id="ex"></div>`;
     const bs = [...$app.querySelectorAll('.opt')], ck = perm.indexOf(q.ans);
@@ -716,13 +728,13 @@ function runItems(items, opt) {
     S.reveal = () => go(-1);
   }
   function drawZ(it) {
-    const z = Z[it.id];
+    const z = Z[it.id], perm = permFor(z.ans), ck = perm.indexOf(z.ans);
     $app.innerHTML = card(it, LAWTAB[lawOfId(it.id)], `<div class="cloze">${hlText(z.pre)}<span class="blank" id="bl">　</span>${hlText(z.post)}</div>`) +
-      `<div class="numopts">${z.opts.map((o, k) => `<button class="opt" data-k="${k}">${esc(o)}</button>`).join('')}</div><div id="ex"></div>`;
+      `<div class="numopts">${perm.map((p, k) => `<button class="opt" data-k="${k}">${esc(z.opts[p])}</button>`).join('')}</div><div id="ex"></div>`;
     const bs = [...$app.querySelectorAll('.opt')], bl = document.getElementById('bl');
-    const go = k => { const ok = k === z.ans; choose(bs, z.ans, k); bl.textContent = z.opts[z.ans]; bl.classList.add(ok ? 'filled' : 'bad'); result(ok, srcOf(z.law, z.no, z.quote)); };
+    const go = k => { const ok = k === ck; choose(bs, ck, k); bl.textContent = z.opts[z.ans]; bl.classList.add(ok ? 'filled' : 'bad'); result(ok, srcOf(z.law, z.no, z.quote)); };
     bs.forEach(b => b.onclick = () => go(+b.dataset.k));
-    S.say = () => z.pre + '，空格，' + z.post + '。選項：' + z.opts.join('、');
+    S.say = () => z.pre + '，空格，' + z.post + '。選項：' + perm.map(p => z.opts[p]).join('、');
     S.reveal = () => go(-1);
   }
   function drawT(it) {
@@ -930,7 +942,7 @@ function quickTF() {
 function mockStart(title, list, opt) {
   opt = opt || {};
   document.body.classList.add('playing');
-  const M = { items: list.map(q => ({ q, perm: opt.fixed ? [0, 1, 2, 3] : shuffle([0, 1, 2, 3]) })), ans: list.map(() => -1), i: 0, end: Date.now() + (opt.minutes || 60) * 60e3 };
+  const M = { items: list.map(q => ({ q, perm: permFor(q.ans) })), ans: list.map(() => -1), i: 0, end: Date.now() + (opt.minutes || 60) * 60e3 };
   const okAt = (it, a) => a >= 0 && accepts(it.q, it.perm[a]);
   const noOf = i => opt.fixed ? qNo(M.items[i].q) || i + 1 : i + 1;
   const fmt = ms => { ms = Math.max(0, ms); return String(Math.floor(ms / 60000)).padStart(2, '0') + ':' + String(Math.floor(ms % 60000 / 1000)).padStart(2, '0'); };
