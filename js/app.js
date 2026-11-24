@@ -121,15 +121,51 @@ function srcHTML(law, no, quote, extraTexts) {
 function bindSrc(root) { root.querySelectorAll('.src .more').forEach(b => b.onclick = () => { const f = b.nextElementSibling; f.hidden = !f.hidden; b.textContent = f.hidden ? '全文' : '收起'; }); }
 
 /* ---------- 音效 ---------- */
-let ac = null;
-function tone(seq) { if (ST.mute) return; try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); const t = ac.currentTime; seq.forEach(([f, d, s, type, vol]) => { const o = ac.createOscillator(), g = ac.createGain(); o.type = type || 'triangle'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t + s); g.gain.exponentialRampToValueAtTime(vol || 0.18, t + s + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + s + d); o.connect(g).connect(ac.destination); o.start(t + s); o.stop(t + s + d + 0.02); }); } catch (e) {} }
-const sOk = () => tone([[660, .12, 0], [990, .18, .08]]);
-const sBad = () => tone([[170, .22, 0, 'sawtooth', .12]]);
-const sStamp = () => tone([[90, .25, 0, 'sine', .4], [60, .3, .02, 'sine', .3]]);
-const sWin = () => tone([[523, .14, 0], [659, .14, .11], [784, .14, .22], [1046, .3, .33]]);
+/* 音效：Web Audio 合成，不需要音檔 */
+let ac = null, noiseBuf = null;
+function ctx() {
+  if (!ac) { ac = new (window.AudioContext || window.webkitAudioContext)(); try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {} }
+  if (ac.state === 'suspended') ac.resume();
+  return ac;
+}
+function tone(seq) {
+  if (ST.mute) return;
+  try {
+    const a = ctx(), t = a.currentTime;
+    seq.forEach(([f, d, st, type, vol, f2]) => {
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = type || 'triangle'; o.frequency.setValueAtTime(f, t + st);
+      if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + st + d);
+      g.gain.setValueAtTime(0.0001, t + st); g.gain.exponentialRampToValueAtTime(vol || 0.18, t + st + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + st + d);
+      o.connect(g).connect(a.destination); o.start(t + st); o.stop(t + st + d + 0.03);
+    });
+  } catch (e) {}
+}
+function noise(d, freq, vol, st) {
+  if (ST.mute) return;
+  try {
+    const a = ctx(), t = a.currentTime + (st || 0);
+    if (!noiseBuf) { noiseBuf = a.createBuffer(1, a.sampleRate * 0.5, a.sampleRate); const ch = noiseBuf.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1; }
+    const src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    src.buffer = noiseBuf; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 1.2;
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    src.connect(f).connect(g).connect(a.destination); src.start(t); src.stop(t + d + 0.02);
+  } catch (e) {}
+}
+let comboNow = 0;
+const semi = n => Math.pow(2, n / 12);
+const sTap = () => tone([[1400, .035, 0, 'sine', .06]]);
+const sOk = () => { const k = semi(Math.min(comboNow, 10)); tone([[784 * k, .1, 0, 'triangle', .2], [1175 * k, .16, .07, 'triangle', .2], [1568 * k, .22, .07, 'sine', .07]]); if (comboNow && comboNow % 5 === 0) tone([[2093, .12, .2, 'sine', .1], [2637, .2, .28, 'sine', .1]]); };
+const sBad = () => { tone([[220, .2, 0, 'square', .07, 140], [165, .25, .08, 'triangle', .12, 110]]); };
+const sStamp = () => { noise(.12, 300, .5); tone([[110, .25, 0, 'sine', .45, 55]]); };
+const sCoin = () => tone([[1318, .07, 0, 'square', .05], [1976, .14, .06, 'square', .05]]);
+const sFlip = () => noise(.14, 2400, .25);
+const sPlace = () => { noise(.05, 1800, .2); tone([[880, .05, 0, 'sine', .08]]); };
+const sWin = () => tone([[523, .12, 0], [659, .12, .1], [784, .12, .2], [1046, .45, .3], [784, .45, .3, 'sine', .08], [659, .45, .3, 'sine', .06]]);
 const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
 const muteBtn = document.getElementById('muteBtn');
 function drawMute() { muteBtn.innerHTML = ST.mute ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 8.5a5 5 0 0 1 0 7M19.5 6a8.5 8.5 0 0 1 0 12"/></svg>'; muteBtn.setAttribute('aria-pressed', ST.mute); }
+document.addEventListener('pointerdown', e => { if (e.target.closest('.btn,.opt,.tile,.start,.tfb,.pc,.mi,.chip,.mode,.tabs a,.seg a,.slot,.charcard,.icon-btn,.seqpool button,.go')) sTap(); }, true);
 muteBtn.onclick = () => { ST.mute = !ST.mute; save(); drawMute(); }; drawMute();
 const hlBtn = document.getElementById('hlBtn');
 function drawHl() { hlBtn.classList.toggle('on', !!ST.hl); hlBtn.setAttribute('aria-pressed', !!ST.hl); }
@@ -165,6 +201,16 @@ window.addEventListener('hashchange', route);
 document.querySelectorAll('.tabs a').forEach(a => a.addEventListener('click', e => { if (location.hash === a.getAttribute('href')) { e.preventDefault(); route(); } }));
 function goTab(v) { if (location.hash === '#' + v) route(); else location.hash = '#' + v; }
 function dock(html) { const d = document.createElement('div'); d.className = 'dock'; d.innerHTML = `<div class="in">${html}</div>`; document.body.appendChild(d); return d; }
+
+/* ---------- 紙花 ---------- */
+function confetti(el, n) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const r = el.getBoundingClientRect(), box = document.createElement('div'); box.className = 'confetti';
+  box.style.left = (r.left + r.width / 2) + 'px'; box.style.top = (r.top + r.height / 2 + window.scrollY) + 'px';
+  const cols = ['var(--verm)', 'var(--indigo)', 'var(--gold)', 'var(--ok)'];
+  for (let i = 0; i < n; i++) { const p = document.createElement('i'); const a = Math.random() * Math.PI * 2, d = 40 + Math.random() * 70; p.style.setProperty('--x', Math.cos(a) * d + 'px'); p.style.setProperty('--y', (Math.sin(a) * d - 30) + 'px'); p.style.setProperty('--r', (Math.random() * 540 - 270) + 'deg'); p.style.background = cols[i % 4]; p.style.animationDelay = (Math.random() * 60) + 'ms'; box.appendChild(p); }
+  document.body.appendChild(box); setTimeout(() => box.remove(), 1000);
+}
 
 /* ========== 今日學習 ========== */
 const ROUND = 15;
@@ -210,7 +256,7 @@ function vHome() {
   document.getElementById('tl').onclick = () => goTab('map');
 }
 function sessionEnd(S, opt) {
-  const d = dayRec(); d.rounds++; ST.coins += 5; save();
+  const d = dayRec(); d.rounds++; ST.coins += 5; save(); setTimeout(sCoin, 450);
   const hit = goalJustHit; goalJustHit = false;
   sWin(); setTab('');
   $app.innerHTML = statBar() + `<div class="end">
@@ -235,7 +281,7 @@ function vChars() {
   $app.querySelectorAll('.charcard').forEach(b => b.onclick = () => {
     const c = CHARS.list.find(x => x.id === b.dataset.c);
     if (ST.owned.includes(c.id)) { ST.chr = c.id; save(); tone([[700, .1, 0]]); vChars(); return; }
-    if (ST.coins >= c.price) { ST.coins -= c.price; ST.owned.push(c.id); ST.chr = c.id; save(); sStamp(); sWin(); vChars(); const n = $app.querySelector(`.charcard[data-c="${c.id}"]`); n && n.classList.add('jump'); return; }
+    if (ST.coins >= c.price) { ST.coins -= c.price; ST.owned.push(c.id); ST.chr = c.id; save(); sCoin(); setTimeout(sWin, 150); vChars(); const nc = $app.querySelector(`.charcard[data-c="${c.id}"]`); nc && confetti(nc, 24); const n = $app.querySelector(`.charcard[data-c="${c.id}"]`); n && n.classList.add('jump'); return; }
     b.classList.add('shake'); sBad(); setTimeout(() => b.classList.remove('shake'), 400);
   });
 }
@@ -291,7 +337,7 @@ function readCards(cards, opt) {
     const fc = document.getElementById('fc');
     const fit = () => { const fs = fc.querySelectorAll('.face'); let hmax = 0; fs.forEach(f => { f.style.position = 'relative'; hmax = Math.max(hmax, f.scrollHeight); f.style.position = ''; }); fc.style.minHeight = Math.max(300, hmax) + 'px'; };
     fit();
-    const flip = () => { fc.classList.toggle('flip'); nx.disabled = false; nx.classList.remove('ghost'); };
+    const flip = () => { sFlip(); fc.classList.toggle('flip'); nx.disabled = false; nx.classList.remove('ghost'); };
     fc.onclick = flip; fc.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } };
     document.getElementById('x').onclick = opt.back;
     document.querySelectorAll('.dock').forEach(d => d.remove());
@@ -312,14 +358,14 @@ function runItems(items, opt) {
   const S = { i: 0, right: 0, combo: 0, best: 0 };
   const next = () => { document.querySelectorAll('.dock').forEach(d => d.remove()); S.i++; S.i < items.length ? draw() : finish(); };
   S.answered = 0;
-  const head = () => `<div class="ph"><button class="icon-btn" id="x" aria-label="離開">${XICON}</button><span class="track"><i style="width:${S.i / items.length * 100}%"></i></span><span class="combo" id="cb">${S.combo > 1 ? S.combo : ''}</span><span class="mchr" id="mc">${window.CHARS ? CHARS.svg(ST.chr, 'idle') : ''}</span></div>`;
+  const head = () => `<div class="ph"><button class="icon-btn" id="x" aria-label="離開">${XICON}</button><span class="track"><i style="width:${S.i / items.length * 100}%"></i></span><span class="combo" id="cb">${S.combo > 1 ? S.combo : ''}</span></div><div class="buddy"><span class="mchr" id="mc">${window.CHARS ? CHARS.svg(ST.chr, 'idle') : ''}</span></div>`;
   function result(ok, srcHtml) {
     const it = items[S.i];
     mark(it.id, ok); S.answered++;
-    if (ok) { S.right++; S.combo++; S.best = Math.max(S.best, S.combo); sOk(); } else { S.combo = 0; sBad(); buzz(120); }
+    if (ok) { S.right++; S.combo++; S.best = Math.max(S.best, S.combo); comboNow = S.combo; sOk(); } else { S.combo = 0; comboNow = 0; sBad(); buzz(120); }
     if (!ok && opt.session && (it.retry || 0) < 2) items.splice(Math.min(S.i + 4, items.length), 0, { t: it.t, id: it.id, retry: (it.retry || 0) + 1 });
     const mc = document.getElementById('mc');
-    if (mc && window.CHARS) { mc.innerHTML = CHARS.svg(ST.chr, ok ? 'happy' : 'sad'); mc.className = 'mchr ' + (ok ? 'jump' : 'shake'); if (ok) mc.insertAdjacentHTML('beforeend', '<b class="plus">+1</b>'); }
+    if (mc && window.CHARS) { mc.innerHTML = CHARS.svg(ST.chr, ok ? 'happy' : 'sad'); mc.className = 'mchr ' + (ok ? 'jump' : 'sadshake'); if (ok) { mc.insertAdjacentHTML('beforeend', '<b class="plus">+1</b>'); confetti(mc, S.combo >= 5 ? 22 : 12); } }
     const cb = document.getElementById('cb'); if (cb) { cb.textContent = S.combo > 1 ? S.combo : ''; if (ok) { cb.classList.add('pop'); setTimeout(() => cb.classList.remove('pop'), 200); } }
     const ex = document.getElementById('ex'); if (ex && srcHtml) { ex.innerHTML = srcHtml; bindSrc(ex); }
     dock(`<button class="btn" id="nx">${S.i + 1 < items.length ? '下一題' : '完成'}</button>`);
@@ -332,8 +378,8 @@ function runItems(items, opt) {
     ({ q: drawQ, z: drawZ, t: drawT, m: drawM, s: drawS, o: drawO })[it.t](it);
     document.getElementById('x').onclick = opt.back;
   }
-  function penO(b) { b.insertAdjacentHTML('beforeend', '<svg class="pen" viewBox="0 0 100 40" preserveAspectRatio="none"><ellipse class="draw" cx="50" cy="20" rx="48" ry="18" pathLength="1000"/></svg>'); }
-  function penX(b) { b.insertAdjacentHTML('beforeend', '<svg class="pen" viewBox="0 0 100 40" preserveAspectRatio="none"><path class="draw" d="M8 6L92 34M92 6L8 34" pathLength="1000"/></svg>'); b.classList.add('shake'); }
+  function penO(b) { b.insertAdjacentHTML('beforeend', '<span class="mk ok" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'); }
+  function penX(b) { b.insertAdjacentHTML('beforeend', '<span class="mk no" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></span>'); b.classList.add('shake'); }
   function drawQ(it) {
     const q = Q[it.id], perm = shuffle([0, 1, 2, 3]);
     $app.innerHTML = head() + `<div class="meta"><span class="lawtag">${LAWS_SHORT[q.law] || ''}</span>${esc(U[q.unit].title)}</div><p class="qtext">${hlText(q.q, true)}</p>

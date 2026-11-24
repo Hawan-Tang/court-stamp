@@ -20,7 +20,7 @@
       s += `<path d="M${x1 - 6} ${y - 9} L${x1 + 4} ${y - 6.5}" ${line} fill="none" stroke="${light ? '#fff' : INK}"/>`;
       s += `<path d="M${x2 + 6} ${y - 9} L${x2 - 4} ${y - 6.5}" ${line} fill="none" stroke="${light ? '#fff' : INK}"/>`;
     }
-    return s;
+    return mood === 'sad' ? s : `<g class="eyes">${s}</g>`;
   }
   function mouth(mood, x, y, light) {
     const c = light ? '#fff' : INK;
