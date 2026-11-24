@@ -1,0 +1,592 @@
+(function () {
+'use strict';
+const D = window.DATA, LAWS = window.LAWS;
+const KEY = 'tws-game-v1';
+const $app = document.getElementById('app');
+const LAWN = { org: '法院組織法', civ: '民事訴訟法', crim: '刑事訴訟法' };
+const LAWS_SHORT = { '法院組織法': '法組', '民事訴訟法': '民訴', '刑事訴訟法': '刑訴', '法庭旁聽規則': '旁聽', '法庭席位布置規則': '席位', '法庭錄音錄影及其利用保存辦法': '錄音錄影', '臺灣高等法院以下各級法院或分院臨時開庭辦法': '臨時開庭', '法院便民禮民實施要點': '便民' };
+const SHORT3 = { org: '法組', civ: '民訴', crim: '刑訴' };
+const L = 'ABCD';
+
+/* ---------- 索引 ---------- */
+const U = {}, Q = {}, Z = {}, T = {}, SQ = {}, IDX = {};
+D.units.forEach(u => U[u.id] = u);
+D.questions.forEach(q => Q[q.id] = q);
+D.cloze.forEach(z => Z[z.id] = z);
+D.tf.forEach(t => T[t.id] = t);
+D.seqs.forEach(s => SQ[s.id] = s);
+for (const n in LAWS) { IDX[n] = {}; LAWS[n].forEach(([k, v]) => { if (k !== 'h') IDX[n][k] = v; }); }
+const LV = D.levels, LVI = {}; LV.forEach((l, i) => LVI[l.id] = i);
+
+/* ---------- 儲存 ---------- */
+const O = {}; (D.order || []).forEach(o => O[o.id] = o);
+function load() { try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.r) return v; } catch (e) {} return { r: {}, lv: {}, mute: false, mocks: [], quick: 0 }; }
+const ST = load(); ST.lv = ST.lv || {}; ST.mocks = ST.mocks || []; if (ST.hl === undefined) ST.hl = true;
+ST.srs = ST.srs || {}; ST.days = ST.days || {}; ST.coins = ST.coins || 0; ST.owned = ST.owned || ['turtle']; ST.chr = ST.chr || 'turtle';
+const GOAL = 30;
+const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const dayRec = () => { const k = today(); return ST.days[k] = ST.days[k] || { right: 0, rounds: 0, goal: 0 }; };
+const SRS_DAYS = [1, 3, 7, 15, 30, 60];
+const SRS_T = { q: 1, z: 1, o: 1 };
+function srsUpdate(id, ok) {
+  const s = ST.srs[id] || { l: 0, due: 0 };
+  if (ok) { s.l = Math.min(s.l + 1, SRS_DAYS.length); s.due = Date.now() + SRS_DAYS[s.l - 1] * 864e5 - 3600e3; }
+  else { s.l = 0; s.due = Date.now(); }
+  ST.srs[id] = s;
+}
+const typeOf = id => Q[id] ? 'q' : Z[id] ? 'z' : O[id] ? 'o' : T[id] ? 't' : SQ[id] ? 's' : 'm';
+const dueIds = () => Object.keys(ST.srs).filter(id => ST.srs[id].due <= Date.now());
+function streak() { let n = 0; const d = new Date(); if (!(ST.days[today()] || {}).rounds) d.setDate(d.getDate() - 1); for (;;) { const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); if ((ST.days[k] || {}).rounds) { n++; d.setDate(d.getDate() - 1); } else return n; } }
+const monthGoals = () => { const m = today().slice(0, 7); return Object.keys(ST.days).filter(k => k.startsWith(m) && ST.days[k].goal).length; };
+let goalJustHit = false;
+function save() { try { localStorage.setItem(KEY, JSON.stringify(ST)); } catch (e) {} }
+function mark(id, ok) {
+  const r = ST.r[id] || [0, 0, 0, 0]; if (ok) { r[0]++; r[2] = 1; r[3]++; } else { r[1]++; r[2] = 0; r[3] = 0; } ST.r[id] = r;
+  if (SRS_T[typeOf(id)]) srsUpdate(id, ok);
+  if (ok) { const d = dayRec(); d.right++; ST.coins++; if (d.right >= GOAL && !d.goal) { d.goal = 1; ST.coins += 20; goalJustHit = true; } }
+  save();
+}
+const isWrong = id => { const r = ST.r[id]; return r && r[1] > 0 && r[3] < 2; };
+
+/* ---------- 工具 ---------- */
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const hash = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
+const NUMRE = /([零一二三四五六七八九十百千萬兩0-9]+)(個月|小時|日|月|年|人|元|次|歲|公分|分鐘)/g;
+function lawOf(u) { return U[u].law; }
+function artNoKey(no) { const m = no.match(/第(\d+)(?:-(\d+))?/); return m ? (+m[1]) * 100 + (+(m[2] || 0)) : 0; }
+function artLines(law, no) {
+  const t = (IDX[law] || {})[no]; if (!t) return [];
+  if (/^\(\d+\)/.test(t.trim())) { const p = t.split(/\s*\((\d+)\)/).filter(x => x !== ''); const out = []; for (let i = 0; i < p.length; i += 2) out.push('第' + '一二三四五六七八九十'.charAt(+p[i] - 1) + '項　' + (p[i + 1] || '')); return out; }
+  return [t];
+}
+/* ---------- 螢光筆：重點標色＋註釋 ---------- */
+const GL = {}; (D.glossary || []).forEach(g => GL[g.t] = g);
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const SUBJ = '最高法院|高等法院|地方法院|檢察總長|檢察事務官|檢察官|司法事務官|司法警察官|司法警察|審判長|受命法官|受託法官|法官|書記官|庭務員|法警|通譯|自訴人|告訴人|被害人|辯護人|輔佐人|代理人|當事人|債權人|債務人|被告|證人|鑑定人|旁聽人|法院';
+const KEYW = '不得|應即|始得|但|除外';
+const NEG = '錯誤|不正確|不包括|不屬於|不得為|無須';
+const HLRE = new RegExp(`(${Object.keys(GL).sort((a, b) => b.length - a.length).map(reEsc).join('|') || '\\uFFFF'})|([零一二三四五六七八九十百千萬兩0-9]+(?:個月|小時|日|月|年|人|元|次|歲|公分|分鐘))|(${SUBJ})|(${NEG})|(${KEYW})`, 'g');
+function hlText(s, stem, inBtn) {
+  if (!ST.hl) return esc(s);
+  let out = '', last = 0; HLRE.lastIndex = 0; let m;
+  while ((m = HLRE.exec(s))) {
+    out += esc(s.slice(last, m.index)); last = HLRE.lastIndex;
+    const v = esc(m[0]);
+    if (m[1]) out += inBtn ? `<span class="gl-s">${v}</span>` : `<button class="gl" data-t="${v}">${v}</button>`;
+    else if (m[2]) out += s[m.index - 1] === '第' ? v : `<span class="hl-n">${v}</span>`;
+    else if (m[3]) out += `<span class="hl-s">${v}</span>`;
+    else if (m[4]) out += stem ? `<span class="hl-neg">${v}</span>` : v;
+    else out += `<span class="hl-k">${v}</span>`;
+  }
+  return out + esc(s.slice(last));
+}
+function glossOf(...texts) { const all = texts.join(' '); return Object.keys(GL).filter(t => all.includes(t)); }
+function notesHTML(terms) {
+  if (!terms.length) return '';
+  return `<div class="notes"><b>註釋</b>${terms.map(t => { const g = GL[t]; return `<div class="note"><span class="term">${esc(t)}</span>${esc(g.n)}${g.law ? `<span class="muted">（${esc(g.law)} ${esc(g.no)}）</span>` : ''}</div>`; }).join('')}</div>`;
+}
+let pop = null;
+function closePop() { if (pop) { pop.remove(); pop = null; } }
+document.addEventListener('click', e => {
+  const b = e.target.closest('.gl');
+  if (!b) { if (pop && !e.target.closest('.pop')) closePop(); return; }
+  e.stopPropagation(); closePop();
+  const g = GL[b.dataset.t]; if (!g) return;
+  pop = document.createElement('div'); pop.className = 'pop'; pop.setAttribute('role', 'dialog');
+  pop.innerHTML = `<b>${esc(g.t)}</b><div>${esc(g.n)}</div>${g.law ? `<div class="muted">${esc(g.law)} ${esc(g.no)}</div>` : ''}`;
+  document.body.appendChild(pop);
+  const r = b.getBoundingClientRect(), pw = Math.min(320, window.innerWidth - 32);
+  pop.style.width = pw + 'px';
+  pop.style.left = Math.max(16, Math.min(window.innerWidth - pw - 16, r.left + r.width / 2 - pw / 2)) + 'px';
+  const below = r.bottom + 8 + pop.offsetHeight < window.innerHeight;
+  pop.style.top = (below ? r.bottom + 8 : r.top - pop.offsetHeight - 8) + window.scrollY + 'px';
+}, true);
+window.addEventListener('scroll', closePop, { passive: true });
+
+function artHTML(law, no, opt) {
+  opt = opt || {};
+  const ls = artLines(law, no); if (!ls.length) return '<p class="muted">（查無條文）</p>';
+  return ls.map(l => {
+    if (opt.holes) return '<p>' + esc(l).replace(NUMRE, '<span class="hole"></span>') + '</p>';
+    const f = opt.hl ? (x => hlText(x)) : (opt.nums ? (x => esc(x).replace(NUMRE, '<span class="n-hi">$1$2</span>')) : esc);
+    if (opt.quote && l.includes(opt.quote)) { const i = l.indexOf(opt.quote); return '<p>' + f(l.slice(0, i)) + '<mark>' + f(opt.quote) + '</mark>' + f(l.slice(i + opt.quote.length)) + '</p>'; }
+    return '<p>' + f(l) + '</p>';
+  }).join('');
+}
+function srcHTML(law, no, quote, extraTexts) {
+  const terms = glossOf(quote || '', ...(extraTexts || []));
+  return `<div class="src"><div class="h"><b>出處</b><span>${esc(law)} ${esc(no)}</span><span class="tag">依條文改編</span></div>${quote ? `<q>${hlText(quote)}</q>` : ''}${notesHTML(terms)}<button class="more">全文</button><div class="full" hidden>${artHTML(law, no, { quote, hl: true })}</div></div>`;
+}
+function bindSrc(root) { root.querySelectorAll('.src .more').forEach(b => b.onclick = () => { const f = b.nextElementSibling; f.hidden = !f.hidden; b.textContent = f.hidden ? '全文' : '收起'; }); }
+
+/* ---------- 音效 ---------- */
+let ac = null;
+function tone(seq) { if (ST.mute) return; try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); const t = ac.currentTime; seq.forEach(([f, d, s, type, vol]) => { const o = ac.createOscillator(), g = ac.createGain(); o.type = type || 'triangle'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t + s); g.gain.exponentialRampToValueAtTime(vol || 0.18, t + s + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + s + d); o.connect(g).connect(ac.destination); o.start(t + s); o.stop(t + s + d + 0.02); }); } catch (e) {} }
+const sOk = () => tone([[660, .12, 0], [990, .18, .08]]);
+const sBad = () => tone([[170, .22, 0, 'sawtooth', .12]]);
+const sStamp = () => tone([[90, .25, 0, 'sine', .4], [60, .3, .02, 'sine', .3]]);
+const sWin = () => tone([[523, .14, 0], [659, .14, .11], [784, .14, .22], [1046, .3, .33]]);
+const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+const muteBtn = document.getElementById('muteBtn');
+function drawMute() { muteBtn.innerHTML = ST.mute ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 8.5a5 5 0 0 1 0 7M19.5 6a8.5 8.5 0 0 1 0 12"/></svg>'; muteBtn.setAttribute('aria-pressed', ST.mute); }
+muteBtn.onclick = () => { ST.mute = !ST.mute; save(); drawMute(); }; drawMute();
+const hlBtn = document.getElementById('hlBtn');
+function drawHl() { hlBtn.classList.toggle('on', !!ST.hl); hlBtn.setAttribute('aria-pressed', !!ST.hl); }
+hlBtn.onclick = () => { ST.hl = !ST.hl; save(); drawHl(); if (!document.body.classList.contains('playing')) route(); }; drawHl();
+
+/* ---------- 印章 ---------- */
+function stampSVG(text, seed, cls) {
+  const rot = (hash(seed) % 30) - 15;
+  const ta = 'fill="currentColor" font-weight="900" text-anchor="middle" style="font-family:var(--f-head)"';
+  const t = text.length === 2 ? `<text x="50" y="47" font-size="27" ${ta}>${esc(text[0])}</text><text x="50" y="76" font-size="27" ${ta}>${esc(text[1])}</text>` : `<text x="50" y="60" font-size="22" ${ta}>${esc(text)}</text>`;
+  return `<svg class="${cls || 'stamp'}" viewBox="0 0 100 100" style="transform:rotate(${rot}deg)" aria-hidden="true"><g filter="url(#ink)"><circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" stroke-width="5"/><circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" stroke-width="1.6"/>${t}</g></svg>`;
+}
+function starsHTML(n) { return `<div class="stars">${[1, 2, 3].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</div>`; }
+
+/* ---------- 路由 ---------- */
+let cleanup = null;
+function setTab(v) {
+  document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('on', a.dataset.v === v || (v === 'wrong' && a.dataset.v === 'home') || ((v === 'numbers' || v === 'laws') && a.dataset.v === 'lookup')));
+  const n = dueIds().length, a = document.querySelector('.tabs a[data-v="home"]'); let d = a && a.querySelector('.dot');
+  if (!a) return;
+  if (n) { if (!d) { d = document.createElement('span'); d.className = 'dot'; a.appendChild(d); } d.textContent = n > 99 ? '99+' : n; } else if (d) d.remove();
+}
+function reset() { if (cleanup) { cleanup(); cleanup = null; } closePop(); document.querySelectorAll('.dock').forEach(d => d.remove()); document.body.classList.remove('playing'); window.scrollTo(0, 0); }
+function route() {
+  reset();
+  const h = (location.hash || '#home').slice(1);
+  const views = { home: vHome, map: vMap, modes: vModes, chars: vChars, lookup: vNumbers, wrong: vWrong, numbers: vNumbers, laws: vLaws };
+  const v = views[h] ? h : 'home';
+  setTab(v);
+  views[v]();
+}
+window.addEventListener('hashchange', route);
+document.querySelectorAll('.tabs a').forEach(a => a.addEventListener('click', e => { if (location.hash === a.getAttribute('href')) { e.preventDefault(); route(); } }));
+function goTab(v) { if (location.hash === '#' + v) route(); else location.hash = '#' + v; }
+function dock(html) { const d = document.createElement('div'); d.className = 'dock'; d.innerHTML = `<div class="in">${html}</div>`; document.body.appendChild(d); return d; }
+
+/* ========== 今日學習 ========== */
+const ROUND = 15;
+function buildSession() {
+  const now = Date.now();
+  const due = Object.keys(ST.srs).filter(id => ST.srs[id].due <= now && (Q[id] || Z[id] || O[id])).sort((a, b) => ST.srs[a].due - ST.srs[b].due).slice(0, 8).map(id => ({ t: typeOf(id), id }));
+  const fresh = [];
+  for (const lv of LV) { for (const [t, id] of lv.items) { if (fresh.length >= ROUND) break; if (!ST.r[id] && !fresh.some(x => x.id === id)) fresh.push({ t, id }); } if (fresh.length >= ROUND) break; }
+  const out = []; let a = 0, b = 0;
+  while (out.length < ROUND && (a < due.length || b < fresh.length)) { if (a < due.length && (out.length % 2 === 0 || b >= fresh.length)) out.push(due[a++]); else if (b < fresh.length) out.push(fresh[b++]); }
+  if (out.length < ROUND) { const weak = shuffle(D.questions.filter(q => !out.some(x => x.id === q.id))).slice(0, ROUND - out.length).map(q => ({ t: 'q', id: q.id })); out.push(...weak); }
+  return out;
+}
+function startSession() { reset(); goalJustHit = false; runItems(buildSession(), { session: true, back: () => goTab('home') }); }
+function ringSVG(v, max, size) {
+  const r = size / 2 - 6, c = 2 * Math.PI * r, p = Math.min(1, v / max);
+  return `<svg class="goalring" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--faint)" stroke-width="7"/><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${p >= 1 ? 'var(--gold)' : 'var(--ok)'}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p)}" transform="rotate(-90 ${size / 2} ${size / 2})"/><text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" font-size="${size / 4.6}" font-weight="900" fill="currentColor">${Math.min(v, max)}/${max}</text></svg>`;
+}
+const COIN = '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="var(--verm)" stroke-width="2.6"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="var(--verm)" stroke-width="1.4"/></svg>';
+const FLAME = '<svg class="ic" viewBox="0 0 24 24"><path d="M12 2c1 4 5 5.5 5 11a5 5 0 0 1-10 0c0-2.5 1.2-4 2.2-5 .3 1.7 1 2.6 2 3-.6-3.4.4-6.5.8-9z" fill="#F08A24"/><path d="M12 13c.6 1.5 2.4 2 2.4 4a2.4 2.4 0 0 1-4.8 0c0-1.3.9-2.3 2.4-4z" fill="#FFD23F"/></svg>';
+const MEDAL = n => { const c = n >= 28 ? '#E8B730' : n >= 20 ? '#B9C2CC' : n >= 10 ? '#C98A4B' : 'var(--line)'; return `<svg class="ic" viewBox="0 0 24 24"><path d="M7 2h4l2 6H9zM13 2h4l-2 6h-4z" fill="var(--indigo)" opacity=".6"/><circle cx="12" cy="15" r="6.5" fill="${c}" stroke="var(--ink)" stroke-width="1.2"/></svg>`; };
+function statBar() { return `<div class="stats"><span class="pill" title="印花">${COIN}<b class="num" id="coins">${ST.coins}</b></span><span class="pill" title="連續天數">${FLAME}<b class="num">${streak()}</b></span><span class="pill" title="本月達標天數">${MEDAL(monthGoals())}<b class="num">${monthGoals()}</b></span></div>`; }
+function vHome() {
+  const d = ST.days[today()] || { right: 0 }, due = dueIds().length, wr = wrongIds().length;
+  const learned = D.questions.filter(q => ST.r[q.id]).length;
+  $app.innerHTML = statBar() + `
+  <section class="stage">
+    <div class="ringwrap">${ringSVG(d.right, GOAL, 84)}</div>
+    <button class="hero-chr" id="hc" aria-label="${esc((CHARS.list.find(c => c.id === ST.chr) || {}).name || '')}">${CHARS.svg(ST.chr, 'idle')}</button>
+    <div class="floor"></div>
+  </section>
+  <button class="start" id="st"><span>今日學習</span></button>
+  <div class="tiles">
+    <button class="tile" id="tr"><b class="num">${due}</b><span>今天要複習</span></button>
+    <button class="tile" id="tw"><b class="num">${wr}</b><span>錯題</span></button>
+    <button class="tile" id="tl"><b class="num">${learned}<small>/${D.questions.length}</small></b><span>已學過</span></button>
+  </div>`;
+  document.getElementById('st').onclick = startSession;
+  const hc = document.getElementById('hc');
+  hc.onclick = () => { hc.innerHTML = CHARS.svg(ST.chr, 'happy'); hc.classList.remove('jump'); void hc.offsetWidth; hc.classList.add('jump'); tone([[880, .08, 0], [1175, .12, .07]]); setTimeout(() => { hc.innerHTML = CHARS.svg(ST.chr, 'idle'); }, 900); };
+  document.getElementById('tr').onclick = () => { const ids = dueIds().filter(id => Q[id] || Z[id] || O[id]); if (ids.length) { reset(); runItems(shuffle(ids).slice(0, 20).map(id => ({ t: typeOf(id), id })), { session: true, back: () => goTab('home') }); } else { const t = document.getElementById('tr'); t.classList.add('shake'); setTimeout(() => t.classList.remove('shake'), 400); } };
+  document.getElementById('tw').onclick = () => goTab('wrong');
+  document.getElementById('tl').onclick = () => goTab('map');
+}
+function sessionEnd(S, opt) {
+  const d = dayRec(); d.rounds++; ST.coins += 5; save();
+  const hit = goalJustHit; goalJustHit = false;
+  sWin(); setTab('');
+  $app.innerHTML = statBar() + `<div class="end">
+    <div class="endchr jump">${CHARS.svg(ST.chr, 'happy')}</div>
+    <div class="score">${S.right}<small> / ${S.answered}</small></div>
+    <div class="gain">${COIN}<b>+${S.right + 5}${hit ? ' +20' : ''}</b></div>
+    ${ringSVG(d.right, GOAL, 96)}
+    ${hit ? `<svg class="trophy pop" viewBox="0 0 64 64"><path d="M18 8h28v12a14 14 0 0 1-28 0z" fill="#E8B730" stroke="#2A2320" stroke-width="3" stroke-linejoin="round"/><path d="M18 12H9a9 9 0 0 0 10 12M46 12h9a9 9 0 0 1-10 12" fill="none" stroke="#2A2320" stroke-width="3"/><rect x="28" y="33" width="8" height="10" fill="#C9961F" stroke="#2A2320" stroke-width="3"/><rect x="20" y="43" width="24" height="9" rx="2" fill="#7B4A27" stroke="#2A2320" stroke-width="3"/></svg>` : ''}
+  </div>
+  <div class="btns"><button class="btn" id="again">再一輪</button><button class="btn ghost" id="home">首頁</button></div>`;
+  if (hit) setTimeout(() => { sStamp(); sWin(); }, 400);
+  document.getElementById('again').onclick = startSession;
+  document.getElementById('home').onclick = () => goTab('home');
+}
+
+/* ========== 角色 ========== */
+function vChars() {
+  $app.innerHTML = statBar() + `<h1>角色</h1><div class="chargrid">${CHARS.list.map(c => {
+    const own = ST.owned.includes(c.id), on = ST.chr === c.id, can = ST.coins >= c.price;
+    return `<button class="charcard ${on ? 'on' : ''} ${own ? '' : 'locked'}" data-c="${c.id}">${CHARS.svg(c.id, on ? 'happy' : 'idle')}<b>${esc(c.name)}</b><span class="rl">${esc(c.role)}</span>${own ? (on ? '<span class="tagon">使用中</span>' : '<span class="tagbuy own">使用</span>') : `<span class="tagbuy ${can ? '' : 'no'}">${COIN}${c.price}</span>`}</button>`;
+  }).join('')}</div>`;
+  $app.querySelectorAll('.charcard').forEach(b => b.onclick = () => {
+    const c = CHARS.list.find(x => x.id === b.dataset.c);
+    if (ST.owned.includes(c.id)) { ST.chr = c.id; save(); tone([[700, .1, 0]]); vChars(); return; }
+    if (ST.coins >= c.price) { ST.coins -= c.price; ST.owned.push(c.id); ST.chr = c.id; save(); sStamp(); sWin(); vChars(); const n = $app.querySelector(`.charcard[data-c="${c.id}"]`); n && n.classList.add('jump'); return; }
+    b.classList.add('shake'); sBad(); setTimeout(() => b.classList.remove('shake'), 400);
+  });
+}
+function lookupSeg(v) { return `<div class="seg"><a href="#numbers" class="${v === 'numbers' ? 'on' : ''}">數字表</a><a href="#laws" class="${v === 'laws' ? 'on' : ''}">條文</a></div>`; }
+
+/* ========== 集章冊 ========== */
+const unlocked = i => i === 0 || !!ST.lv[LV[i - 1].id];
+function curIndex() { for (let i = 0; i < LV.length; i++) if (!ST.lv[LV[i].id]) return i; return -1; }
+function vMap() {
+  const done = LV.filter(l => ST.lv[l.id]).length;
+  const pct = k => { const ls = LV.filter(l => lawOf(l.unit) === k); return ls.length ? Math.round(ls.filter(l => ST.lv[l.id]).length / ls.length * 100) : 0; };
+  const ci = curIndex(), cur = ci >= 0 ? LV[ci] : null;
+  let h = `<section class="hero"><div class="count">${done}<small> / ${LV.length}</small></div><div class="bars">${['org', 'civ', 'crim'].map(k => `<div class="bar-row"><span>${SHORT3[k]}</span><span class="track"><i style="width:${pct(k)}%"></i></span><span class="num muted">${pct(k)}%</span></div>`).join('')}</div></section>`;
+  if (cur) h += `<button class="go" id="go"><span class="mini">${esc(cur.stamp)}</span><div><b>${done ? '繼續學習' : '開始學習'}</b><span>${esc(U[cur.unit].title)}${cur.of > 1 ? ' ' + cur.n + '/' + cur.of : ''}</span></div></button>`;
+  D.stages.forEach(([k, t, ids]) => {
+    const ls = LV.filter(l => ids.includes(l.unit)); if (!ls.length) return;
+    const dn = ls.filter(l => ST.lv[l.id]).length;
+    h += `<section class="book"><header><span class="k">${k}</span><h2>${t}</h2><span class="c">${dn}/${ls.length}</span></header><div class="slots">` +
+      ls.map(l => {
+        const i = LVI[l.id], rec = ST.lv[l.id], st = rec ? 'done' : (i === ci ? 'cur' : (unlocked(i) ? 'open' : 'lock'));
+        const inner = rec ? stampSVG(l.stamp, l.id) : (st === 'cur' || st === 'open' ? `<b>${esc(l.stamp)}</b>` : '');
+        return `<button class="slot ${st}" data-l="${l.id}" ${st === 'lock' ? 'disabled aria-disabled="true"' : ''} aria-label="${esc(U[l.unit].title)} ${l.n}"><span class="ring">${inner}</span>${starsHTML(rec ? rec.s : 0)}<span class="lbl">${esc(U[l.unit].title)}${l.of > 1 ? ' ' + l.n : ''}</span></button>`;
+      }).join('') + `</div></section>`;
+  });
+  $app.innerHTML = h;
+  const g = document.getElementById('go'); if (g) g.onclick = () => playLevel(cur.id);
+  $app.querySelectorAll('.slot:not(.lock)').forEach(b => b.onclick = () => playLevel(b.dataset.l));
+  if (cur) { const c = $app.querySelector('.slot.cur'); c && setTimeout(() => c.scrollIntoView({ block: 'center', behavior: 'smooth' }), 400); }
+}
+
+/* ========== 關卡 ========== */
+function playLevel(id) {
+  reset(); document.body.classList.add('playing');
+  const lv = LV[LVI[id]];
+  readCards(lv.arts.map(([law, no]) => ({ law, no })), {
+    back: () => goTab('map'),
+    done: () => runItems(lv.items.map(([t, i]) => ({ t, id: i })), { level: lv, back: () => goTab('map') })
+  });
+}
+
+/* ---------- 條文卡 ---------- */
+function readCards(cards, opt) {
+  let i = 0; const again = [];
+  const draw = () => {
+    window.scrollTo(0, 0);
+    const c = cards[i];
+    $app.innerHTML = `<div class="ph"><button class="icon-btn" id="x" aria-label="離開">${XICON}</button><span class="track"><i style="width:${i / cards.length * 100}%"></i></span><span class="meta num">${i + 1}/${cards.length}</span></div>
+    <div class="cardstage"><div class="fcard" id="fc" role="button" tabindex="0" aria-label="翻面">
+      <div class="face front"><div class="meta"><span class="lawtag">${LAWS_SHORT[c.law] || ''}</span>${esc(c.law)}</div><div class="no">${esc(c.no)}</div><div class="tx">${artHTML(c.law, c.no, { holes: true })}</div></div>
+      <div class="face back"><div class="meta"><span class="lawtag">${LAWS_SHORT[c.law] || ''}</span>${esc(c.law)}</div><div class="no">${esc(c.no)}</div><div class="tx">${artHTML(c.law, c.no, { hl: true })}</div></div>
+    </div></div>
+    <div class="dots">${cards.map((_, k) => `<i class="${k <= i ? 'on' : ''}"></i>`).join('')}</div>`;
+    const fc = document.getElementById('fc');
+    const fit = () => { const fs = fc.querySelectorAll('.face'); let hmax = 0; fs.forEach(f => { f.style.position = 'relative'; hmax = Math.max(hmax, f.scrollHeight); f.style.position = ''; }); fc.style.minHeight = Math.max(300, hmax) + 'px'; };
+    fit();
+    const flip = () => { fc.classList.toggle('flip'); nx.disabled = false; nx.classList.remove('ghost'); };
+    fc.onclick = flip; fc.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } };
+    document.getElementById('x').onclick = opt.back;
+    document.querySelectorAll('.dock').forEach(d => d.remove());
+    const last = i === cards.length - 1;
+    dock(`${opt.repeat ? '<button class="btn ghost" id="ag">再看一次</button>' : (i > 0 ? '<button class="btn ghost" id="pv">上一張</button>' : '')}<button class="btn ${fc.classList.contains('flip') ? '' : 'ghost'}" id="nx">${last ? (opt.doneLabel || '挑戰') : (opt.repeat ? '記住了' : '下一張')}</button>`);
+    const nx = document.getElementById('nx');
+    nx.onclick = () => { if (last && !again.length) { document.querySelectorAll('.dock').forEach(d => d.remove()); opt.done(); } else { if (last) { cards = cards.concat(again.splice(0)); } i++; draw(); } };
+    const pv = document.getElementById('pv'); if (pv) pv.onclick = () => { i--; draw(); };
+    const ag = document.getElementById('ag'); if (ag) ag.onclick = () => { again.push(c); if (last) { cards = cards.concat(again.splice(0)); } i++; draw(); };
+  };
+  draw();
+}
+
+/* ---------- 題目執行器 ---------- */
+const XICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+function runItems(items, opt) {
+  document.body.classList.add('playing');
+  const S = { i: 0, right: 0, combo: 0, best: 0 };
+  const next = () => { document.querySelectorAll('.dock').forEach(d => d.remove()); S.i++; S.i < items.length ? draw() : finish(); };
+  S.answered = 0;
+  const head = () => `<div class="ph"><button class="icon-btn" id="x" aria-label="離開">${XICON}</button><span class="track"><i style="width:${S.i / items.length * 100}%"></i></span><span class="combo" id="cb">${S.combo > 1 ? S.combo : ''}</span><span class="mchr" id="mc">${window.CHARS ? CHARS.svg(ST.chr, 'idle') : ''}</span></div>`;
+  function result(ok, srcHtml) {
+    const it = items[S.i];
+    mark(it.id, ok); S.answered++;
+    if (ok) { S.right++; S.combo++; S.best = Math.max(S.best, S.combo); sOk(); } else { S.combo = 0; sBad(); buzz(120); }
+    if (!ok && opt.session && (it.retry || 0) < 2) items.splice(Math.min(S.i + 4, items.length), 0, { t: it.t, id: it.id, retry: (it.retry || 0) + 1 });
+    const mc = document.getElementById('mc');
+    if (mc && window.CHARS) { mc.innerHTML = CHARS.svg(ST.chr, ok ? 'happy' : 'sad'); mc.className = 'mchr ' + (ok ? 'jump' : 'shake'); if (ok) mc.insertAdjacentHTML('beforeend', '<b class="plus">+1</b>'); }
+    const cb = document.getElementById('cb'); if (cb) { cb.textContent = S.combo > 1 ? S.combo : ''; if (ok) { cb.classList.add('pop'); setTimeout(() => cb.classList.remove('pop'), 200); } }
+    const ex = document.getElementById('ex'); if (ex && srcHtml) { ex.innerHTML = srcHtml; bindSrc(ex); }
+    dock(`<button class="btn" id="nx">${S.i + 1 < items.length ? '下一題' : '完成'}</button>`);
+    const nx = document.getElementById('nx'); nx.onclick = next; nx.focus({ preventScroll: true });
+    setTab('');
+  }
+  function draw() {
+    window.scrollTo(0, 0);
+    const it = items[S.i];
+    ({ q: drawQ, z: drawZ, t: drawT, m: drawM, s: drawS, o: drawO })[it.t](it);
+    document.getElementById('x').onclick = opt.back;
+  }
+  function penO(b) { b.insertAdjacentHTML('beforeend', '<svg class="pen" viewBox="0 0 100 40" preserveAspectRatio="none"><ellipse class="draw" cx="50" cy="20" rx="48" ry="18" pathLength="1000"/></svg>'); }
+  function penX(b) { b.insertAdjacentHTML('beforeend', '<svg class="pen" viewBox="0 0 100 40" preserveAspectRatio="none"><path class="draw" d="M8 6L92 34M92 6L8 34" pathLength="1000"/></svg>'); b.classList.add('shake'); }
+  function drawQ(it) {
+    const q = Q[it.id], perm = shuffle([0, 1, 2, 3]);
+    $app.innerHTML = head() + `<div class="meta"><span class="lawtag">${LAWS_SHORT[q.law] || ''}</span>${esc(U[q.unit].title)}</div><p class="qtext">${hlText(q.q, true)}</p>
+    <div class="opts">${perm.map((p, k) => `<button class="opt" data-k="${k}"><span class="L">(${L[k]})</span><span>${esc(q.opts[p])}</span></button>`).join('')}</div><div id="ex"></div>`;
+    const bs = [...$app.querySelectorAll('.opt')], ck = perm.indexOf(q.ans);
+    bs.forEach(b => b.onclick = () => { const k = +b.dataset.k; bs.forEach(x => x.disabled = true); bs.forEach((x, i) => { if (i === ck) { x.classList.add('right'); penO(x); } else if (i === k) { x.classList.add('wrong'); penX(x); } else x.classList.add('dim'); }); result(k === ck, srcHTML(q.law, q.no, q.quote, [q.q, q.opts[q.ans]]) + (q.hook ? `<div class="meta" style="color:var(--verm);font-weight:700">${esc(q.hook)}</div>` : '')); });
+  }
+  function drawZ(it) {
+    const z = Z[it.id];
+    $app.innerHTML = head() + `<div class="meta"><span class="lawtag">${LAWS_SHORT[z.law] || ''}</span>${esc(U[z.unit].title)}</div><div class="cloze">${hlText(z.pre)}<span class="blank" id="bl">　</span>${hlText(z.post)}</div>
+    <div class="numopts">${z.opts.map((o, k) => `<button class="opt" data-k="${k}">${esc(o)}</button>`).join('')}</div><div id="ex"></div>`;
+    const bs = [...$app.querySelectorAll('.opt')], bl = document.getElementById('bl');
+    bs.forEach(b => b.onclick = () => { const k = +b.dataset.k, ok = k === z.ans; bs.forEach(x => x.disabled = true); bs.forEach((x, i) => { if (i === z.ans) { x.classList.add('right'); penO(x); } else if (i === k) { x.classList.add('wrong'); penX(x); } else x.classList.add('dim'); }); bl.textContent = z.opts[z.ans]; bl.classList.add(ok ? 'filled' : 'bad'); result(ok, srcHTML(z.law, z.no, z.quote)); });
+  }
+  function drawT(it) {
+    const t = T[it.id];
+    $app.innerHTML = head() + `<div class="meta"><span class="lawtag">${LAWS_SHORT[t.law] || ''}</span>${esc(U[t.unit].title)}</div><div class="tfwrap"><div class="tfcard" id="tc"><div>${hlText(t.s)}</div></div>
+    <div class="tfbtns"><button class="tfb x" data-v="0" aria-label="錯">${TF_X}</button><button class="tfb o" data-v="1" aria-label="對">${TF_O}</button></div></div><div id="ex"></div>`;
+    tfBind(document.getElementById('tc'), v => { const ok = v === t.ok; const tc = document.getElementById('tc'); tc.classList.add(t.ok ? 'yes' : 'no'); if (!ok) tc.classList.add('shake'); $app.querySelectorAll('.tfb').forEach(b => b.disabled = true); result(ok, srcHTML(t.law, t.no, t.quote)); });
+  }
+  function drawM(it) {
+    const set = D.matches[it.id]; const left = shuffle(set.map((p, i) => ({ i, s: p.a }))), right = shuffle(set.map((p, i) => ({ i, s: p.b })));
+    $app.innerHTML = head() + `<div class="meta">配對</div><div class="match"><div class="col">${left.map(x => `<button class="mi a" data-i="${x.i}">${esc(x.s)}</button>`).join('')}</div><div class="col">${right.map(x => `<button class="mi b" data-i="${x.i}">${esc(x.s)}</button>`).join('')}</div></div><div id="ex"></div>`;
+    let sel = null, errs = 0, got = 0;
+    const pick = b => {
+      if (b.classList.contains('ok')) return;
+      if (!sel || sel.classList.contains(b.classList.contains('a') ? 'a' : 'b')) { $app.querySelectorAll('.mi.sel').forEach(x => x.classList.remove('sel')); sel = b; b.classList.add('sel'); return; }
+      const a = sel; sel = null; a.classList.remove('sel');
+      if (a.dataset.i === b.dataset.i) { a.classList.add('ok'); b.classList.add('ok'); got++; tone([[700 + got * 80, .1, 0]]); if (got === set.length) result(errs <= 1, `<div class="src"><div class="h"><b>出處</b><span class="tag">依條文改編</span></div>${set.map(p => `<div style="font-size:14px">${esc(p.a)}：<b style="color:var(--verm)">${esc(p.b)}</b>　<span class="muted">${esc(p.law)} ${esc(p.no)}</span></div>`).join('')}</div>`); }
+      else { errs++; [a, b].forEach(x => { x.classList.add('err', 'shake'); setTimeout(() => x.classList.remove('err', 'shake'), 400); }); sBad(); buzz(60); }
+    };
+    $app.querySelectorAll('.mi').forEach(b => b.onclick = () => pick(b));
+  }
+  function drawS(it) {
+    const s = SQ[it.id]; const pool = shuffle(s.steps.map((t, i) => ({ t, i })));
+    $app.innerHTML = head() + `<div class="meta">排序</div><p class="qtext">${esc(s.title)}</p><div class="seqslots">${s.steps.map((_, i) => `<div class="seqslot ${i === 0 ? 'next' : ''}" data-i="${i}"></div>`).join('')}</div><div class="seqpool">${pool.map(x => `<button data-i="${x.i}">${esc(x.t)}</button>`).join('')}</div><div id="ex"></div>`;
+    let n = 0, errs = 0; const slots = [...$app.querySelectorAll('.seqslot')];
+    $app.querySelectorAll('.seqpool button').forEach(b => b.onclick = () => {
+      if (+b.dataset.i === n) { slots[n].textContent = b.textContent; slots[n].classList.remove('next'); slots[n].classList.add('f'); b.remove(); n++; tone([[600 + n * 70, .1, 0]]); if (slots[n]) slots[n].classList.add('next');
+        if (n === s.steps.length) result(errs <= 1, `<div class="src"><div class="h"><b>出處</b><span>${esc(s.law)} ${s.nos.map(esc).join('、')}</span><span class="tag">依條文整理</span></div><button class="more">全文</button><div class="full" hidden>${s.nos.map(no => `<p><b>${esc(no)}</b></p>${artHTML(s.law, no)}`).join('')}</div></div>`); }
+      else { errs++; b.classList.add('shake'); setTimeout(() => b.classList.remove('shake'), 400); sBad(); buzz(60); }
+    });
+  }
+  function drawO(it) {
+    const o = O[it.id]; const cards = shuffle(o.parts.map((t, i) => ({ t, i })).concat([{ t: o.x, i: -1 }]));
+    $app.innerHTML = head() + `<div class="meta"><span class="lawtag">${LAWS_SHORT[o.law] || ''}</span>${esc(U[o.unit].title)}</div>
+    <div class="build" id="bd">${o.parts.map(() => '<span class="slotc"></span>').join('')}</div>
+    <div class="cardpool">${cards.map(c => `<button class="pc" data-i="${c.i}">${hlText(c.t, false, true)}</button>`).join('')}</div><div id="ex"></div>`;
+    let n = 0, errs = 0; const slots = [...$app.querySelectorAll('.slotc')]; slots[0].classList.add('next');
+    $app.querySelectorAll('.pc').forEach(b => b.onclick = e => {
+      if (e.target.closest('.gl')) return;
+      if (+b.dataset.i === n) { slots[n].innerHTML = b.innerHTML; slots[n].classList.remove('next'); slots[n].classList.add('f'); b.remove(); n++; tone([[600 + n * 60, .09, 0]]); if (slots[n]) slots[n].classList.add('next');
+        if (n === o.parts.length) { $app.querySelectorAll('.pc').forEach(x => x.classList.add('out')); result(errs <= 1, srcHTML(o.law, o.no, o.quote)); } }
+      else { errs++; b.classList.add('err', 'shake'); setTimeout(() => b.classList.remove('err', 'shake'), 420); sBad(); buzz(60); }
+    });
+  }
+  function finish() {
+    const n = items.length, pct = S.right / Math.max(1, S.answered || n), lv = opt.level;
+    if (opt.session) { sessionEnd(S, opt); return; }
+    if (lv && pct >= 0.7 && !ST.lv[lv.id]) { ST.coins += 10; save(); }
+    if (!lv) { // 一般練習
+      sWin();
+      const wrong = items.filter(it => (it.t === 'q' || it.t === 'z' || it.t === 't') && ST.r[it.id] && ST.r[it.id][2] === 0);
+      $app.innerHTML = `<div class="end"><div class="score">${S.right}<small> / ${n}</small></div>${S.best > 2 ? `<div class="meta num">連對 ${S.best}</div>` : ''}</div><div class="btns">${wrong.length ? `<button class="btn" id="rw">再做錯的 ${wrong.length} 題</button>` : ''}<button class="btn ${wrong.length ? 'ghost' : ''}" id="bk">返回</button></div>`;
+      const rw = document.getElementById('rw'); if (rw) rw.onclick = () => runItems(wrong, opt);
+      document.getElementById('bk').onclick = opt.back; return;
+    }
+    const pass = pct >= 0.7, stars = pct >= 0.95 ? 3 : pct >= 0.85 ? 2 : 1;
+    const prev = ST.lv[lv.id];
+    if (pass) { ST.lv[lv.id] = { s: Math.max(stars, prev ? prev.s : 0), b: Math.max(Math.round(pct * 100), prev ? prev.b : 0) }; save(); }
+    const ni = LVI[lv.id] + 1, nextLv = LV[ni];
+    $app.innerHTML = `<div class="end">${pass ? stampSVG(lv.stamp, lv.id, 'bigstamp slam') : `<svg class="bigstamp miss" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="6 6"/></svg>`}
+      ${pass ? starsHTML(stars) : ''}<div class="score">${S.right}<small> / ${n}</small></div></div>
+      <div class="btns">${pass && nextLv ? `<button class="btn" id="nl">下一關</button>` : ''}<button class="btn ${pass && nextLv ? 'ghost' : ''}" id="ag">再一次</button><button class="btn ghost" id="bk">集章冊</button></div>`;
+    if (pass) { setTimeout(() => { sStamp(); buzz(40); }, 120); setTimeout(sWin, 500); } else sBad();
+    const nl = document.getElementById('nl'); if (nl) nl.onclick = () => playLevel(nextLv.id);
+    document.getElementById('ag').onclick = () => runItems(shuffle(items), opt);
+    document.getElementById('bk').onclick = () => goTab('map');
+  }
+  draw();
+}
+const TF_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const TF_O = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="12" cy="12" r="7.5"/></svg>';
+function tfBind(card, cb) {
+  let x0 = null, dx = 0, done = false;
+  const bx = document.querySelector('.tfb.x'), bo = document.querySelector('.tfb.o');
+  const commit = v => { if (done) return; done = true; card.style.transform = ''; bx.classList.remove('lean'); bo.classList.remove('lean'); cb(v); };
+  bx.onclick = () => commit(false); bo.onclick = () => commit(true);
+  card.addEventListener('pointerdown', e => { if (done || e.target.closest('.gl')) return; x0 = e.clientX; dx = 0; card.classList.add('dragging'); card.setPointerCapture(e.pointerId); });
+  card.addEventListener('pointermove', e => { if (x0 === null || done) return; dx = e.clientX - x0; card.style.transform = `translateX(${dx}px) rotate(${dx / 18}deg)`; bx.classList.toggle('lean', dx < -40); bo.classList.toggle('lean', dx > 40); });
+  const end = () => { if (x0 === null) return; x0 = null; card.classList.remove('dragging'); if (Math.abs(dx) > 80) commit(dx > 0); else { card.style.transform = ''; bx.classList.remove('lean'); bo.classList.remove('lean'); } };
+  card.addEventListener('pointerup', end); card.addEventListener('pointercancel', end);
+  const key = e => { if (done) { document.removeEventListener('keydown', key); return; } if (e.key === 'ArrowLeft') commit(false); if (e.key === 'ArrowRight') commit(true); };
+  document.addEventListener('keydown', key);
+}
+
+/* ========== 學法 ========== */
+let FILTER = 'all';
+const inFilter = unit => FILTER === 'all' || lawOf(unit) === FILTER;
+const MODE_ICONS = {
+  card: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="6" width="13" height="15" rx="2"/><path d="M8 3h11a2 2 0 0 1 2 2v13"/></svg>',
+  cloze: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 8h5M16 8h5M3 15h9"/><rect x="9" y="5" width="6" height="6" rx="1.5"/><rect x="13" y="12" width="8" height="6" rx="1.5"/></svg>',
+  quick: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M10 2h4"/></svg>',
+  match: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="4" width="7" height="5" rx="1.5"/><rect x="2" y="15" width="7" height="5" rx="1.5"/><rect x="15" y="4" width="7" height="5" rx="1.5"/><rect x="15" y="15" width="7" height="5" rx="1.5"/><path d="M9 6.5l6 11M9 17.5l6-11"/></svg>',
+  order: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 5l1-1v4M3.5 12.5a1.2 1.2 0 1 1 2 1L3.5 15H6M3.5 17h2a1 1 0 0 1 0 2h-2"/></svg>',
+  mock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M9 10h6M9 14h6M9 18h3"/></svg>',
+};
+function vModes() {
+  const qn = D.questions.filter(q => inFilter(q.unit)).length;
+  $app.innerHTML = `<h1>學法</h1><div class="chips">${[['all', '三法'], ['org', '法組'], ['civ', '民訴'], ['crim', '刑訴']].map(([k, t]) => `<button class="chip ${FILTER === k ? 'on' : ''}" data-f="${k}">${t}</button>`).join('')}</div>
+  <div class="modes">
+   <button class="mode" data-m="card">${MODE_ICONS.card}<b>條文卡翻牌</b><span>20 張</span></button>
+   <button class="mode" data-m="cloze">${MODE_ICONS.cloze}<b>挖空填數字</b><span>15 題</span></button>
+   <button class="mode" data-m="quick">${MODE_ICONS.quick}<b>限時是非快答</b><span>60 秒${ST.quick ? '・最佳 ' + ST.quick : ''}</span></button>
+   <button class="mode" data-m="match">${MODE_ICONS.match}<b>配對</b><span>3 組</span></button>
+   <button class="mode" data-m="order">${MODE_ICONS.order}<b>流程排序</b><span>${D.seqs.filter(s => inFilter(s.unit)).length} 組</span></button>
+   <button class="mode" data-m="rand">${MODE_ICONS.mock}<b>隨機選擇題</b><span>20 題・共 ${qn} 題</span></button>
+  </div>
+  <section style="display:flex;flex-direction:column;gap:10px"><h2>模擬考</h2>
+   <button class="mode" data-m="mock1" style="min-height:0"><b>法院組織法大意</b><span>50 題・60 分鐘・每題 2 分</span></button>
+   <button class="mode" data-m="mock2" style="min-height:0"><b>民事訴訟法大意與刑事訴訟法大意</b><span>民訴 25＋刑訴 25・60 分鐘</span></button>
+   ${ST.mocks.length ? `<div class="list">${ST.mocks.slice(-6).reverse().map(m => `<div class="row"><div><div>${esc(m.t)}</div><div class="r">${esc(m.d)}</div></div><b class="num" style="font-size:20px">${m.s}</b></div>`).join('')}</div>` : ''}
+  </section>`;
+  $app.querySelectorAll('.chip').forEach(b => b.onclick = () => { FILTER = b.dataset.f; vModes(); });
+  const back = () => goTab('modes');
+  $app.querySelectorAll('.mode').forEach(b => b.onclick = () => {
+    reset(); const m = b.dataset.m;
+    if (m === 'card') { const seen = new Set(), cards = []; shuffle(D.questions.filter(q => inFilter(q.unit))).forEach(q => { const k = q.law + q.no; if (!seen.has(k)) { seen.add(k); cards.push({ law: q.law, no: q.no }); } }); document.body.classList.add('playing'); readCards(cards.slice(0, 20), { back, done: back, repeat: true, doneLabel: '完成' }); }
+    else if (m === 'cloze') runItems(shuffle(D.cloze.filter(z => inFilter(z.unit))).slice(0, 15).map(z => ({ t: 'z', id: z.id })), { back });
+    else if (m === 'quick') quickTF();
+    else if (m === 'match') { const ks = shuffle(Object.keys(D.matches).filter(k => inFilter(k.split('-')[0]))).slice(0, 3); runItems(ks.map(k => ({ t: 'm', id: k })), { back }); }
+    else if (m === 'order') runItems(shuffle(D.seqs.filter(s => inFilter(s.unit))).map(s => ({ t: 's', id: s.id })), { back });
+    else if (m === 'rand') runItems(shuffle(D.questions.filter(q => inFilter(q.unit))).slice(0, 20).map(q => ({ t: 'q', id: q.id })), { back });
+    else if (m === 'mock1') mockStart('法院組織法大意', weighted(D.questions.filter(q => lawOf(q.unit) === 'org'), 50));
+    else if (m === 'mock2') mockStart('民事訴訟法大意與刑事訴訟法大意', [...weighted(D.questions.filter(q => lawOf(q.unit) === 'civ'), 25), ...weighted(D.questions.filter(q => lawOf(q.unit) === 'crim'), 25)]);
+  });
+}
+function weighted(pool, n) { return pool.map(q => ({ q, k: Math.pow(Math.random(), 1 / (U[q.unit].pri || 1)) })).sort((a, b) => b.k - a.k).slice(0, n).map(x => x.q); }
+
+/* ---------- 限時快答 ---------- */
+function quickTF() {
+  document.body.classList.add('playing');
+  const deck = shuffle(D.tf.filter(t => inFilter(t.unit))); let i = 0, right = 0, combo = 0, best = 0; const missed = [];
+  const end = Date.now() + 60000;
+  const draw = () => {
+    const t = deck[i % deck.length];
+    $app.innerHTML = `<div class="ph"><button class="icon-btn" id="x" aria-label="離開">${XICON}</button><span class="timer" id="tm">60</span><span class="sp"></span><span class="combo" id="cb">${combo > 1 ? combo : ''}</span><b class="num" style="font-size:20px">${right}</b></div>
+    <div class="tfwrap"><div class="tfcard" id="tc"><div>${hlText(t.s)}</div></div><div class="tfbtns"><button class="tfb x" aria-label="錯">${TF_X}</button><button class="tfb o" aria-label="對">${TF_O}</button></div></div>`;
+    document.getElementById('x').onclick = () => goTab('modes');
+    tick();
+    tfBind(document.getElementById('tc'), v => {
+      const ok = v === t.ok; mark(t.id, ok); const tc = document.getElementById('tc'); tc.classList.add(t.ok ? 'yes' : 'no');
+      if (ok) { right++; combo++; best = Math.max(best, combo); sOk(); } else { combo = 0; missed.push(t); sBad(); buzz(80); tc.classList.add('shake'); }
+      setTimeout(() => { i++; if (Date.now() < end) draw(); }, ok ? 220 : 650);
+    });
+  };
+  const tick = () => { const left = Math.max(0, Math.ceil((end - Date.now()) / 1000)); const tm = document.getElementById('tm'); if (tm) { tm.textContent = left; tm.classList.toggle('low', left <= 10); } };
+  const timer = setInterval(() => { tick(); if (Date.now() >= end) { clearInterval(timer); over(); } }, 250);
+  cleanup = () => clearInterval(timer);
+  const over = () => {
+    if (right > (ST.quick || 0)) { ST.quick = right; save(); }
+    sWin();
+    $app.innerHTML = `<div class="end"><div class="score">${right}</div><div class="meta num">${best > 2 ? '連對 ' + best + '・' : ''}最佳 ${ST.quick}</div></div>
+    <div class="btns"><button class="btn" id="ag">再一次</button><button class="btn ghost" id="bk">學法</button></div>
+    ${missed.length ? `<section style="display:flex;flex-direction:column;gap:12px"><h2>答錯 ${missed.length}</h2>${missed.map(t => `<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:700">${t.ok ? '○' : '✕'}　${esc(t.s)}</div>${srcHTML(t.law, t.no, t.quote)}</div>`).join('')}</section>` : ''}`;
+    bindSrc($app);
+    document.getElementById('ag').onclick = () => { reset(); quickTF(); };
+    document.getElementById('bk').onclick = () => goTab('modes');
+  };
+  draw();
+}
+
+/* ---------- 模擬考 ---------- */
+function mockStart(title, list) {
+  document.body.classList.add('playing');
+  const M = { items: list.map(q => ({ q, perm: shuffle([0, 1, 2, 3]) })), ans: list.map(() => -1), i: 0, end: Date.now() + 3600e3 };
+  const fmt = ms => { ms = Math.max(0, ms); return String(Math.floor(ms / 60000)).padStart(2, '0') + ':' + String(Math.floor(ms % 60000 / 1000)).padStart(2, '0'); };
+  const d = dock('<button class="btn ghost" id="pv">上一題</button><button class="btn" id="sb">交卷</button>');
+  const draw = () => {
+    window.scrollTo(0, 0);
+    const { q, perm } = M.items[M.i];
+    $app.innerHTML = `<div class="ph"><button class="icon-btn" id="x" aria-label="放棄">${XICON}</button><span class="timer" id="tm">${fmt(M.end - Date.now())}</span><span class="sp"></span><span class="meta num">${M.ans.filter(a => a >= 0).length} / ${M.items.length}</span></div>
+    <div class="meta num">第 ${M.i + 1} 題</div><p class="qtext">${hlText(q.q, true)}</p>
+    <div class="opts">${perm.map((p, k) => `<button class="opt ${M.ans[M.i] === k ? 'sel' : ''}" data-k="${k}"><span class="L">(${L[k]})</span><span>${esc(q.opts[p])}</span></button>`).join('')}</div>
+    <div class="sheet">${M.items.map((_, i) => `<button class="${M.ans[i] >= 0 ? 'f' : ''} ${i === M.i ? 'cur' : ''}" data-i="${i}">${i + 1}</button>`).join('')}</div><div id="cf"></div>`;
+    document.getElementById('x').onclick = () => confirmBox('放棄這次模擬考？', '放棄', () => goTab('modes'));
+    $app.querySelectorAll('.opt').forEach(b => b.onclick = () => { M.ans[M.i] = +b.dataset.k; if (M.i < M.items.length - 1) M.i++; draw(); });
+    $app.querySelectorAll('.sheet button').forEach(b => b.onclick = () => { M.i = +b.dataset.i; draw(); });
+  };
+  const confirmBox = (msg, yes, fn) => { const cf = document.getElementById('cf'); cf.innerHTML = `<div class="src" style="border-color:var(--verm)"><p style="margin:0">${esc(msg)}</p><div class="btns"><button class="btn" id="y">${yes}</button><button class="btn ghost" id="n">繼續作答</button></div></div>`; document.getElementById('y').onclick = fn; document.getElementById('n').onclick = () => cf.innerHTML = ''; cf.scrollIntoView({ behavior: 'smooth' }); };
+  document.getElementById('pv').onclick = () => { if (M.i > 0) { M.i--; draw(); } };
+  document.getElementById('sb').onclick = () => { const left = M.ans.filter(a => a < 0).length; left ? confirmBox(`還有 ${left} 題沒作答，確定交卷？`, '交卷', submit) : submit(); };
+  const timer = setInterval(() => { const left = M.end - Date.now(), t = document.getElementById('tm'); if (t) { t.textContent = fmt(left); t.classList.toggle('low', left < 300e3); } if (left <= 0) submit(); }, 1000);
+  cleanup = () => clearInterval(timer);
+  function submit() {
+    clearInterval(timer); cleanup = null; d.remove(); let right = 0;
+    M.items.forEach((it, i) => { const ok = M.ans[i] === it.perm.indexOf(it.q.ans); if (ok) right++; mark(it.q.id, ok); });
+    const score = right * 2, dt = new Date();
+    ST.mocks.push({ t: title, s: score, d: `${dt.getMonth() + 1}/${dt.getDate()} ${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}` }); save();
+    sWin(); setTab('');
+    const wrong = M.items.map((it, i) => ({ it, i })).filter(({ it, i }) => M.ans[i] !== it.perm.indexOf(it.q.ans));
+    $app.innerHTML = `<div class="end"><div class="score">${score}</div><div class="meta">${esc(title)}・答對 ${right} / ${M.items.length}</div></div>
+    <div class="sheet">${M.items.map((it, i) => `<button class="${M.ans[i] === it.perm.indexOf(it.q.ans) ? 'o' : 'x'}" data-i="${i}">${i + 1}</button>`).join('')}</div>
+    <div class="btns"><button class="btn" id="bk">學法</button></div>
+    ${wrong.length ? `<section style="display:flex;flex-direction:column;gap:14px"><h2>答錯 ${wrong.length}</h2>${wrong.map(({ it, i }) => { const c = it.perm.indexOf(it.q.ans), a = M.ans[i]; return `<div id="w${i}" style="display:flex;flex-direction:column;gap:6px"><div class="meta">第 ${i + 1} 題</div><div style="font-weight:700">${esc(it.q.q)}</div><div style="color:var(--ok);font-weight:700">(${L[c]}) ${esc(it.q.opts[it.q.ans])}</div>${a >= 0 ? `<div style="color:var(--verm);text-decoration:line-through">(${L[a]}) ${esc(it.q.opts[it.perm[a]])}</div>` : '<div class="muted">未作答</div>'}${srcHTML(it.q.law, it.q.no, it.q.quote)}</div>`; }).join('')}</section>` : ''}`;
+    bindSrc($app);
+    document.getElementById('bk').onclick = () => goTab('modes');
+    $app.querySelectorAll('.sheet button.x').forEach(b => b.onclick = () => { const e = document.getElementById('w' + b.dataset.i); e && e.scrollIntoView({ behavior: 'smooth' }); });
+  }
+  draw();
+}
+
+/* ========== 錯題 ========== */
+function wrongIds() { return Object.keys(ST.r).filter(id => (Q[id] || Z[id]) && isWrong(id)); }
+function vWrong() {
+  const ids = wrongIds();
+  if (!ids.length) { $app.innerHTML = `<h1>錯題</h1><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5z"/><path d="M9 13l2 2 4-4"/></svg><p class="muted">答錯的題目會收在這裡，連續答對兩次才會移出。</p></div>`; return; }
+  const items = ids.map(id => Q[id] ? { t: 'q', id, u: Q[id].unit, s: Q[id].q, law: Q[id].law, no: Q[id].no } : { t: 'z', id, u: Z[id].unit, s: Z[id].pre + '＿＿' + Z[id].post, law: Z[id].law, no: Z[id].no });
+  const by = {}; items.forEach(x => (by[lawOf(x.u)] = by[lawOf(x.u)] || []).push(x));
+  $app.innerHTML = `<h1>錯題 <span class="muted num" style="font-size:18px">${ids.length}</span></h1><div class="btns"><button class="btn" id="all">全部重刷</button></div>
+  ${['org', 'civ', 'crim'].filter(k => by[k]).map(k => `<section style="display:flex;flex-direction:column;gap:8px"><h2>${LAWN[k]} <span class="muted num" style="font-size:15px">${by[k].length}</span></h2><div class="list">${by[k].map(x => `<div class="row"><div><div style="font-size:15px">${esc(x.s)}</div><div class="r">${esc(x.law)} ${esc(x.no)}</div></div><span class="r num">✕${ST.r[x.id][1]}</span></div>`).join('')}</div><button class="btn ghost wide" data-k="${k}">只刷${LAWN[k]}</button></section>`).join('')}`;
+  const back = () => goTab('wrong');
+  document.getElementById('all').onclick = () => runItems(shuffle(items), { back });
+  $app.querySelectorAll('[data-k]').forEach(b => b.onclick = () => runItems(shuffle(by[b.dataset.k]), { back }));
+}
+
+/* ========== 數字表 ========== */
+let NUMQ = '', COVER = false;
+function vNumbers() {
+  $app.innerHTML = lookupSeg('numbers') + `<div class="tools"><input id="ns" class="search" type="search" placeholder="搜尋，例如：上訴、羈押、小額" value="${esc(NUMQ)}"><label class="toggle"><input type="checkbox" id="nc" ${COVER ? 'checked' : ''}>遮住答案</label></div><div id="nl" style="display:flex;flex-direction:column;gap:22px"></div>`;
+  const draw = () => {
+    const g = {}; D.numbers.forEach(x => { if (NUMQ && !(x.item + x.value + x.no).includes(NUMQ)) return; (g[x.law] = g[x.law] || []).push(x); });
+    document.getElementById('nl').innerHTML = Object.keys(LAWS).filter(l => g[l]).map(l => `<section><h2 style="margin-bottom:8px">${esc(l)}</h2><div class="list ${COVER ? 'cover' : ''}">${g[l].sort((a, b) => artNoKey(a.no) - artNoKey(b.no)).map(x => `<button class="row nrow"><span>${esc(x.item)}</span><span class="v">${esc(x.value)}</span><span class="a">${esc(x.no)}</span></button>`).join('')}</div></section>`).join('') || '<div class="empty muted">沒有符合的項目</div>';
+    document.querySelectorAll('.nrow').forEach(b => b.onclick = () => b.classList.toggle('show'));
+  };
+  document.getElementById('ns').oninput = e => { NUMQ = e.target.value.trim(); draw(); };
+  document.getElementById('nc').onchange = e => { COVER = e.target.checked; draw(); };
+  draw();
+}
+
+/* ========== 條文 ========== */
+let LAWSEL = '法院組織法', LAWQ = '';
+function vLaws() {
+  $app.innerHTML = lookupSeg('laws') + `<div class="tools"><select id="ls" class="search">${Object.keys(LAWS).map(n => `<option ${n === LAWSEL ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select><input id="lq" class="search" type="search" placeholder="搜尋條文文字" value="${esc(LAWQ)}"></div><div class="lawbox" id="lb"></div>`;
+  const draw = () => {
+    let h = ''; (LAWS[LAWSEL] || []).forEach(([k, v]) => { if (k === 'h') { if (!LAWQ) h += `<h3>${esc(v)}</h3>`; return; } if (LAWQ && !(k + v).includes(LAWQ)) return; let b = artHTML(LAWSEL, k, { nums: true }); if (LAWQ) b = b.split(esc(LAWQ)).join('<mark>' + esc(LAWQ) + '</mark>'); h += `<div class="a"><b>${esc(k)}</b>${b}</div>`; });
+    document.getElementById('lb').innerHTML = h || '<div class="empty muted">沒有符合的條文</div>';
+  };
+  document.getElementById('ls').onchange = e => { LAWSEL = e.target.value; draw(); };
+  let tm; document.getElementById('lq').oninput = e => { clearTimeout(tm); tm = setTimeout(() => { LAWQ = e.target.value.trim(); draw(); }, 200); };
+  draw();
+}
+
+route();
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
