@@ -501,7 +501,9 @@ const WHY = window.WHY || {};
 const whyText = (id, orig) => { const w = WHY[id]; return w && w[orig] ? w[orig].replace(/^(正確|錯)：\s*/, '') : ''; };
 function addWhy(bs, id, perm) { if (!WHY[id]) return; bs.forEach((b, k) => { const t = whyText(id, perm[k]); const sp = b.children[1]; if (t && sp) sp.insertAdjacentHTML('beforeend', `<small class="why">${esc(t)}</small>`); }); }
 const accepts = (q, orig) => orig === q.ans || (q.alt || []).includes(orig);
-const qHead = q => (q.ctx ? `<div class="qctx">${esc(q.ctx)}</div>` : '') + `<p class="qtext">${q.gen ? esc(q.q) : hlText(q.q, true)}</p>`;
+/* 題組文章；英文克漏字沒有題幹，就把文章裡該格的號碼標出來 */
+const ctxHTML = q => { if (!q.ctx) return ''; let h = esc(q.ctx); if (!q.q && q.no) h = h.replace(new RegExp('(^|[^0-9])(' + q.no + ')(?![0-9])', 'g'), '$1<mark class="blankno">$2</mark>'); return `<div class="qctx">${h}</div>`; };
+const qHead = q => ctxHTML(q) + (q.q || !q.gen ? `<p class="qtext">${q.gen ? esc(q.q) : hlText(q.q, true)}</p>` : `<p class="qtext">第 <span class="num">${q.no}</span> 格</p>`);
 const XICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 function lawOfId(id) {
   if (Q[id] && Q[id].gen) return Q[id].subj;
@@ -941,7 +943,7 @@ function mockStart(title, list, opt) {
     $app.innerHTML = `<div class="end"><div class="score">${score}</div><div class="meta">${esc(title)}・答對 ${right} / ${M.items.length}</div></div>
     <div class="sheet">${M.items.map((it, i) => `<button class="${okAt(it, M.ans[i]) ? 'o' : 'x'}" data-i="${i}">${noOf(i)}</button>`).join('')}</div>
     <div class="btns"><button class="btn" id="bk">學法</button></div>
-    ${wrong.length ? `<section style="display:flex;flex-direction:column;gap:14px"><h2>答錯 ${wrong.length}</h2>${wrong.map(({ it, i }) => { const c = it.perm.indexOf(it.q.ans), a = M.ans[i]; return `<div id="w${i}" style="display:flex;flex-direction:column;gap:6px"><div class="meta">第 ${noOf(i)} 題</div>${it.q.ctx ? `<div class="qctx">${esc(it.q.ctx)}</div>` : ''}<div style="font-weight:700">${esc(it.q.q)}</div><div style="color:var(--ok);font-weight:700">(${L[c]}) ${esc(it.q.opts[it.q.ans])}${whyText(it.q.id, it.q.ans) ? `<small class="why">${esc(whyText(it.q.id, it.q.ans))}</small>` : ''}</div>${a >= 0 ? `<div style="color:var(--verm)"><s>(${L[a]}) ${esc(it.q.opts[it.perm[a]])}</s>${whyText(it.q.id, it.perm[a]) ? `<small class="why">${esc(whyText(it.q.id, it.perm[a]))}</small>` : ''}</div>` : '<div class="muted">未作答</div>'}${it.q.gen ? '' : srcHTML(it.q.law, it.q.no, it.q.quote)}</div>`; }).join('')}</section>` : ''}`;
+    ${wrong.length ? `<section style="display:flex;flex-direction:column;gap:14px"><h2>答錯 ${wrong.length}</h2>${wrong.map(({ it, i }) => { const c = it.perm.indexOf(it.q.ans), a = M.ans[i]; return `<div id="w${i}" style="display:flex;flex-direction:column;gap:6px"><div class="meta">第 ${noOf(i)} 題</div>${ctxHTML(it.q)}<div style="font-weight:700">${esc(it.q.q || '第 ' + it.q.no + ' 格')}</div><div style="color:var(--ok);font-weight:700">(${L[c]}) ${esc(it.q.opts[it.q.ans])}${whyText(it.q.id, it.q.ans) ? `<small class="why">${esc(whyText(it.q.id, it.q.ans))}</small>` : ''}</div>${a >= 0 ? `<div style="color:var(--verm)"><s>(${L[a]}) ${esc(it.q.opts[it.perm[a]])}</s>${whyText(it.q.id, it.perm[a]) ? `<small class="why">${esc(whyText(it.q.id, it.perm[a]))}</small>` : ''}</div>` : '<div class="muted">未作答</div>'}${it.q.gen ? '' : srcHTML(it.q.law, it.q.no, it.q.quote)}</div>`; }).join('')}</section>` : ''}`;
     bindSrc($app);
     document.getElementById('bk').onclick = () => goTab('modes');
     $app.querySelectorAll('.sheet button.x').forEach(b => b.onclick = () => { const e = document.getElementById('w' + b.dataset.i); e && e.scrollIntoView({ behavior: 'smooth' }); });
