@@ -80,7 +80,7 @@ function hlText(s, stem, inBtn) {
     else if (m[2]) out += s[m.index - 1] === '第' ? v : `<span class="hl-n">${v}</span>`;
     else if (m[3]) out += `<span class="hl-s">${v}</span>`;
     else if (m[4]) out += stem ? `<span class="hl-neg">${v}</span>` : v;
-    else out += `<span class="hl-k">${v}</span>`;
+    else out += v;
   }
   return out + esc(s.slice(last));
 }
@@ -128,8 +128,13 @@ function bindSrc(root) { root.querySelectorAll('.src .more').forEach(b => b.oncl
 let ac = null, noiseBuf = null;
 function ctx() {
   if (!ac) { ac = new (window.AudioContext || window.webkitAudioContext)(); try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {} }
-  if (ac.state === 'suspended') ac.resume();
+  if (ac.state !== 'running') { try { ac.resume(); } catch (e) {} }
   return ac;
+}
+let master = null;
+function outNode(a) {
+  if (!master) { const comp = a.createDynamicsCompressor(); comp.threshold.value = -20; comp.knee.value = 12; comp.ratio.value = 4; master = a.createGain(); master.gain.value = 2.2; master.connect(comp).connect(a.destination); }
+  return master;
 }
 function tone(seq) {
   if (!ST.set.sound) return;
@@ -140,7 +145,7 @@ function tone(seq) {
       o.type = type || 'triangle'; o.frequency.setValueAtTime(f, t + st);
       if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + st + d);
       g.gain.setValueAtTime(0.0001, t + st); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, (vol || 0.18) * ST.set.vol), t + st + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + st + d);
-      o.connect(g).connect(a.destination); o.start(t + st); o.stop(t + st + d + 0.03);
+      o.connect(g).connect(outNode(a)); o.start(t + st); o.stop(t + st + d + 0.03);
     });
   } catch (e) {}
 }
@@ -152,7 +157,7 @@ function noise(d, freq, vol, st) {
     const src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
     src.buffer = noiseBuf; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 1.2;
     g.gain.setValueAtTime(Math.max(0.0002, vol * ST.set.vol), t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-    src.connect(f).connect(g).connect(a.destination); src.start(t); src.stop(t + d + 0.02);
+    src.connect(f).connect(g).connect(outNode(a)); src.start(t); src.stop(t + d + 0.02);
   } catch (e) {}
 }
 let comboNow = 0;
@@ -162,22 +167,23 @@ function pluck(f, st, vol, dur) {
   if (!ST.set.sound) return;
   try {
     const a = ctx(), t = a.currentTime + (st || 0), d = dur || .5, v = Math.max(0.0002, (vol || .14) * ST.set.vol);
-    const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.Q.value = 0.3; lp.connect(a.destination);
-    [[1, 1], [2, .12]].forEach(([m, k]) => {
+    const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200; lp.Q.value = 0.3; lp.connect(outNode(a));
+    [[1, 1], [2, .22]].forEach(([m, k]) => {
       const o = a.createOscillator(), g = a.createGain(); o.type = 'sine'; o.frequency.value = f * m;
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v * k, t + .018); g.gain.exponentialRampToValueAtTime(0.0001, t + d / m);
       o.connect(g).connect(lp); o.start(t); o.stop(t + d + .05);
     });
   } catch (e) {}
 }
-const sTap = () => pluck(523, 0, .018, .08);
-const sOk = () => { const c = Math.max(0, Math.min(comboNow - 1, 5)), k = semi(c); pluck(523 * k, 0, .14, .6); pluck(659 * k, .1, .12, .8); if (comboNow && comboNow % 5 === 0) { pluck(784, .24, .08, .8); pluck(1047, .34, .06, 1); } };
-const sBad = () => { if (!ST.set.sound) return; tone([[262, .26, 0, 'sine', .09, 196]]); };
-const sStamp = () => { tone([[130, .22, 0, 'sine', .2, 70]]); };
-const sCoin = () => { pluck(784, 0, .09, .5); pluck(988, .08, .08, .7); };
-const sFlip = () => noise(.14, 700, .05);
-const sPlace = () => pluck(587, 0, .08, .35);
-const sWin = () => { [392, 494, 587, 784].forEach((f, i) => pluck(f, i * .1, .11, 1)); };
+const sTap = () => pluck(784, 0, .05, .08);
+const sOk = () => { const c = Math.max(0, Math.min(comboNow - 1, 5)), k = semi(c); pluck(587 * k, 0, .32, .55); pluck(784 * k, .09, .3, .8); if (comboNow && comboNow % 5 === 0) { pluck(988, .22, .18, .8); pluck(1175, .32, .14, 1); } };
+const sBad = () => { if (!ST.set.sound) return; tone([[294, .28, 0, 'triangle', .22, 220]]); };
+const sStamp = () => { tone([[140, .22, 0, 'sine', .4, 70]]); };
+const sCoin = () => { pluck(880, 0, .2, .5); pluck(1175, .08, .18, .7); };
+const sFlip = () => noise(.14, 900, .12);
+const sPlace = () => pluck(698, 0, .18, .35);
+const sWin = () => { [392, 494, 587, 784].forEach((f, i) => pluck(f, i * .1, .24, 1)); };
+const buzzSoft = () => {};
 /* 朗讀：瀏覽器內建語音 */
 const TTS_OK = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
 let ttsVoice = null, ttsBtn = null;
@@ -439,11 +445,63 @@ function lawOfId(id) {
 }
 const LAWTAB = { org: '法組', civ: '民訴', crim: '刑訴' };
 function runItems(items, opt) {
+  if (cleanup) { cleanup(); cleanup = null; }
   document.body.classList.add('playing');
   const S = { i: 0, right: 0, combo: 0, best: 0, answered: 0, done: false, reveal: null };
   const pending = [];
+  S.hist = []; let viewIdx = null;
+  function snap() { const f = document.querySelector('.qfoot'); S.hist[S.i] = { app: $app.innerHTML, foot: f ? f.innerHTML : '', sayA: S.sayA }; }
+  function bindStatic(sayA, live) {
+    const x = document.getElementById('x'); if (x) x.onclick = opt.back;
+    const qs = document.getElementById('qset'); if (qs) qs.onclick = openSettings;
+    const sp = document.getElementById('qsp'); if (sp) sp.onclick = () => { if (sp.classList.contains('on')) { stopSpeak(); return; } speak(sayA, sp); };
+    const pk = document.getElementById('peek'); if (pk) { pk.disabled = false; pk.onclick = () => { const f = document.getElementById('full'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } }; }
+    const nb = document.querySelector('.qfoot .nextbtn'); if (nb) nb.onclick = () => live ? (viewIdx = null, next()) : nav(1);
+    const orb = document.getElementById('orb'); if (orb) { orb.disabled = !live; orb.onclick = live ? (() => { viewIdx = null; next(); }) : null; }
+    bindSrc($app);
+  }
+  function showHist(i) {
+    const h = S.hist[i]; if (!h) return false;
+    stopSpeak(); window.scrollTo(0, 0); closePop();
+    $app.innerHTML = h.app; $app.classList.add('static');
+    document.querySelectorAll('.dock').forEach(d => d.remove());
+    const d = document.createElement('div'); d.className = 'dock qfoot static'; d.innerHTML = h.foot; document.body.appendChild(d);
+    const live = i === S.i;
+    if (!live) { const nb = d.querySelector('.nextbtn span'); if (nb) nb.textContent = '下一題'; }
+    bindStatic(h.sayA, live);
+    return true;
+  }
+  function toast(msg) {
+    document.querySelectorAll('.toast').forEach(t => t.remove());
+    const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t);
+    setTimeout(() => t.classList.add('out'), 1100); setTimeout(() => t.remove(), 1500);
+  }
+  function nav(dir) {
+    if (!document.querySelector('.qcard')) return;
+    if (dir > 0) {
+      if (viewIdx !== null) {
+        viewIdx++;
+        if (viewIdx >= S.i) { viewIdx = null; $app.classList.remove('static'); if (!(S.done && showHist(S.i))) draw(); }
+        else showHist(viewIdx);
+        return;
+      }
+      if (S.done) { next(); return; }
+      const c = document.querySelector('.qcard'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake');
+      toast('還沒作答'); buzz(40); pluck(392, 0, .12, .25);
+    } else {
+      const cur = viewIdx === null ? S.i : viewIdx;
+      if (cur <= 0 || !S.hist[cur - 1]) { const c = document.querySelector('.qcard'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake'); return; }
+      viewIdx = cur - 1; showHist(viewIdx);
+    }
+  }
+  let tx = null, ty = null;
+  const tStart = e => { if (e.target.closest('.tfcard,.sheet-wrap,input')) { tx = null; return; } const p = e.touches[0]; tx = p.clientX; ty = p.clientY; };
+  const tEnd = e => { if (tx === null) return; const p = e.changedTouches[0], dx = p.clientX - tx, dy = p.clientY - ty; tx = null; if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.6) nav(dx < 0 ? 1 : -1); };
+  const kd = e => { if (document.getElementById('sheet') || !document.querySelector('.qcard') || document.querySelector('.tfcard')) return; if (e.key === 'ArrowRight') nav(1); else if (e.key === 'ArrowLeft') nav(-1); };
+  document.addEventListener('touchstart', tStart, { passive: true }); document.addEventListener('touchend', tEnd, { passive: true }); document.addEventListener('keydown', kd);
+  cleanup = () => { document.removeEventListener('touchstart', tStart); document.removeEventListener('touchend', tEnd); document.removeEventListener('keydown', kd); $app.classList.remove('static'); };
   const next = () => {
-    if (!S.done) return; stopSpeak(); document.querySelectorAll('.dock').forEach(d => d.remove()); S.i++;
+    if (!S.done) return; stopSpeak(); viewIdx = null; document.querySelectorAll('.dock').forEach(d => d.remove()); S.i++;
     const now = Date.now(), ready = pending.filter(p => p.at <= now);
     ready.forEach(p => { pending.splice(pending.indexOf(p), 1); items.splice(S.i, 0, p.it); });
     if (S.i >= items.length && pending.length) { pending.sort((a, b) => a.at - b.at); items.push(...pending.splice(0).map(p => p.it)); }
@@ -480,6 +538,7 @@ function runItems(items, opt) {
     const peek = document.getElementById('peek'), art0 = document.getElementById('art');
     if (art0) { art0.hidden = false; art0.className = 'side nextbtn'; art0.innerHTML = `<span>${S.i + 1 < items.length + pending.length ? '下一題' : '完成'}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>`; art0.onclick = next; art0.setAttribute('aria-label', '下一題'); art0.focus({ preventScroll: true }); }
     if (peek) { if (src && src.full) { peek.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M9 8h6M9 12h4"/></svg><span>條文</span>'; peek.onclick = () => { const f = document.getElementById('full'); if (f) { f.hidden = !f.hidden; if (!f.hidden) f.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } }; } else peek.disabled = true; }
+    setTimeout(snap, 0);
     if (src) {
       S.sayA = src.tts || '';
       if (ST.set.tts && S.sayA) setTimeout(() => speak(S.sayA, document.getElementById('qsp')), 600);
@@ -490,7 +549,7 @@ function runItems(items, opt) {
   }
   const srcOf = (law, no, quote, extra) => ({ tts: `${law}${no}。${quote || ''}`, label: `出處　${law} ${no}`, html: answerHTML(quote, extra), full: `<div class="fh">${esc(law)} ${esc(no)}</div>${artHTML(law, no, { quote, hl: true })}` });
   function draw() {
-    window.scrollTo(0, 0); S.done = false; S.reveal = null; S.say = null; S.sayA = '';
+    window.scrollTo(0, 0); S.done = false; S.reveal = null; S.say = null; S.sayA = ''; $app.classList.remove('static');
     document.querySelectorAll('.dock').forEach(d => d.remove());
     const it = items[S.i];
     ({ q: drawQ, z: drawZ, t: drawT, m: drawM, s: drawS, o: drawO })[it.t](it);
