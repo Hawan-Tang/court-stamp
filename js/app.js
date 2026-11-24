@@ -210,9 +210,19 @@ let ttsVoice = null, ttsBtn = null;
 function pickVoice() { try { const vs = speechSynthesis.getVoices(); ttsVoice = vs.find(v => /zh[-_]TW/i.test(v.lang)) || vs.find(v => /zh[-_](HK|Hant)/i.test(v.lang)) || vs.find(v => /^zh/i.test(v.lang)) || null; } catch (e) {} }
 if (TTS_OK) { pickVoice(); try { speechSynthesis.onvoiceschanged = pickVoice; } catch (e) {} }
 const ttsNorm = t => String(t || '').replace(/\(\d+\)/g, '').replace(/第(\d+)-(\d+)條/g, '第$1條之$2').replace(/[「」＿_]/g, '').replace(/\s+/g, ' ');
-function stopSpeak() { if (!TTS_OK) return; try { speechSynthesis.cancel(); } catch (e) {} if (ttsBtn) ttsBtn.classList.remove('on'); }
+let ttsTimer = 0, ttsSeq = 0;
+function stopSpeak() { clearTimeout(ttsTimer); ttsSeq++; if (!TTS_OK) return; try { speechSynthesis.cancel(); } catch (e) {} if (ttsBtn) ttsBtn.classList.remove('on'); }
+/* 延遲朗讀：換題或再朗讀時會取消，舊的不會插進來 */
+function speakLater(get, btnId, ms) { clearTimeout(ttsTimer); const seq = ttsSeq; ttsTimer = setTimeout(() => { if (seq === ttsSeq) speak(get(), document.getElementById(btnId)); }, ms); }
 function speak(text, btn) {
-  if (!TTS_OK || !text) return; stopSpeak();
+  if (!TTS_OK || !text) return;
+  const busy = speechSynthesis.speaking || speechSynthesis.pending; stopSpeak();
+  const seq = ttsSeq;
+  // iOS 剛取消就馬上念會念壞，停一下再念
+  if (busy) { ttsTimer = setTimeout(() => { if (seq === ttsSeq) say(text, btn); }, 120); return; }
+  say(text, btn);
+}
+function say(text, btn) {
   try {
     const u = new SpeechSynthesisUtterance(ttsNorm(text));
     u.lang = ttsVoice ? ttsVoice.lang : 'zh-TW'; if (ttsVoice) u.voice = ttsVoice; u.rate = ST.set.ttsRate || 1;
@@ -600,7 +610,7 @@ function runItems(items, opt) {
     setTimeout(snap, 0);
     if (src) {
       S.sayA = src.tts || '';
-      if (ST.set.tts && S.sayA) setTimeout(() => speak(S.sayA, document.getElementById('qsp')), 600);
+      if (ST.set.tts && S.sayA) speakLater(() => S.sayA, 'qsp', 600);
       const qs = document.getElementById('qs'); if (qs) qs.textContent = src.label;
       const ex = document.getElementById('ex'); if (ex && src.html) { ex.innerHTML = src.html; bindSrc(ex); }
       if (src.full && ex) ex.insertAdjacentHTML('beforeend', `<div class="fullart" id="full" hidden>${src.full}</div>`);
@@ -618,7 +628,7 @@ function runItems(items, opt) {
     $app.appendChild(wrap);
     foot();
     const sp = document.getElementById('qsp');
-    if (sp) { sp.onclick = () => { if (sp.classList.contains('on')) { stopSpeak(); return; } speak(S.done ? S.sayA : (S.say && S.say()), sp); }; if (ST.set.tts && S.say) setTimeout(() => speak(S.say(), sp), 250); }
+    if (sp) { sp.onclick = () => { if (sp.classList.contains('on')) { stopSpeak(); return; } speak(S.done ? S.sayA : (S.say && S.say()), sp); }; if (ST.set.tts && S.say) speakLater(() => S.say(), 'qsp', 250); }
     document.getElementById('x').onclick = opt.back;
     document.getElementById('qset').onclick = openSettings;
   }
@@ -899,5 +909,5 @@ function vLaws() {
 }
 
 route();
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) { const had = !!navigator.serviceWorker.controller; let done = false; navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && !done) { done = true; location.reload(); } }); navigator.serviceWorker.register('sw.js').then(r => r.update()).catch(() => {}); }
 })();
