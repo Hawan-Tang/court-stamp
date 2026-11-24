@@ -645,3 +645,11 @@ body.playing .qslide{will-change:transform;touch-action:pan-y}
 .plainbox p{margin:0 0 8px;line-height:1.8}
 .plainbox p:last-child{margin-bottom:0}
 .qfoot .fbtn,.qfoot .fbtn.ghost.art,.qfoot .fbtn.ghost.pl,.qfoot .fbtn.primary{flex:1 1 0;min-width:0;padding:0 10px}
+/* 英文題的中文 */
+.opt .zh{display:block;margin-top:2px;font-size:14px;font-weight:500;color:var(--ink);opacity:.75}
+.qzh{margin:6px 0 0;font-size:15px;color:var(--muted);line-height:1.7}
+.qctx.zh{background:var(--indigo-soft);margin-top:-4px}
+/* 首頁：已學 X / Y */
+.prog{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:14px;font-weight:700;color:var(--muted)}
+.prog .pbar{width:90px;flex:0 0 90px}
+.prog .pbar i{background:var(--mc,var(--indigo))}
