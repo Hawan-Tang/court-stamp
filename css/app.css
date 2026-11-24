@@ -320,3 +320,53 @@ select.search{flex:0 1 auto}
 .seg a{padding:7px 18px;border-radius:9px;font-weight:700;color:var(--muted);text-decoration:none}
 .seg a.on{background:var(--page);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .gl-s{font-weight:700;color:var(--ok)}
+
+/* ---------- v3：大角色、小勾叉、動態 ---------- */
+.pen{display:none}
+.opt{padding-right:46px}
+.numopts .opt{padding-right:14px}
+.mk{position:absolute;right:10px;top:50%;width:26px;height:26px;margin-top:-13px;border-radius:50%;display:grid;place-items:center;color:#fff;animation:mkpop .35s cubic-bezier(.3,1.7,.5,1)}
+.mk svg{width:17px;height:17px}
+.mk.ok{background:var(--ok)}
+.mk.no{background:var(--verm)}
+@keyframes mkpop{from{transform:scale(0) rotate(-30deg)}}
+.tfb{height:60px}
+.tfb svg{width:26px;height:26px}
+.buddy{display:flex;justify-content:center;align-items:flex-end;height:104px;margin:-6px 0 -8px;position:relative}
+.buddy::after{content:"";position:absolute;bottom:2px;width:84px;height:12px;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--ink) 16%,transparent),transparent)}
+.mchr{width:100px;height:100px;position:relative;z-index:1}
+.mchr svg{width:100%;height:100%;transform-origin:50% 90%;animation:breathe 2.8s ease-in-out infinite}
+.mchr .plus{right:-4px;top:4px;font-size:18px}
+.mchr.jump{animation:bigjump .6s cubic-bezier(.3,1.6,.5,1)}
+@keyframes bigjump{30%{transform:translateY(-26px) rotate(-6deg) scale(1.08)}60%{transform:translateY(0) scale(.96,1.04)}}
+.mchr.sadshake{animation:sadshake .55s}
+@keyframes sadshake{15%{transform:translateX(-7px) rotate(-5deg)}35%{transform:translateX(7px) rotate(5deg)}55%{transform:translateX(-4px)}75%{transform:translateX(3px)}100%{transform:translateY(3px)}}
+@keyframes breathe{50%{transform:scale(1.03,.97)}}
+.eyes{transform-box:fill-box;transform-origin:center;animation:blink 4.6s infinite}
+@keyframes blink{0%,93%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
+.hero-chr{width:min(290px,70vw)}
+.hero-chr svg{transform-origin:50% 90%;animation:breathe 3s ease-in-out infinite}
+.floor{width:min(280px,70vw);margin-top:-30px}
+.endchr{width:190px;height:190px}
+.confetti{position:absolute;width:0;height:0;z-index:50;pointer-events:none}
+.confetti i{position:absolute;width:8px;height:11px;border-radius:2px;animation:conf .9s cubic-bezier(.2,.7,.4,1) forwards}
+@keyframes conf{0%{transform:translate(0,0) rotate(0);opacity:1}80%{opacity:1}100%{transform:translate(var(--x),calc(var(--y) + 60px)) rotate(var(--r));opacity:0}}
+.qtext,.cloze,.tfcard,.build,.match,.seqslots,.fcard{animation:slidein .32s cubic-bezier(.2,.8,.3,1)}
+@keyframes slidein{from{transform:translateX(26px);opacity:0}}
+.opts .opt,.numopts .opt,.cardpool .pc{animation:rise-in .3s cubic-bezier(.2,.8,.3,1) backwards}
+.opts .opt:nth-child(2),.numopts .opt:nth-child(2),.cardpool .pc:nth-child(2){animation-delay:.05s}
+.opts .opt:nth-child(3),.numopts .opt:nth-child(3),.cardpool .pc:nth-child(3){animation-delay:.1s}
+.opts .opt:nth-child(4),.numopts .opt:nth-child(4),.cardpool .pc:nth-child(4){animation-delay:.15s}
+.cardpool .pc:nth-child(n+5){animation-delay:.2s}
+@keyframes rise-in{from{transform:translateY(12px);opacity:0}}
+.opt:active:not([disabled]),.pc:active,.tile:active,.tfb:active{transform:translateY(2px);box-shadow:0 1px 0 var(--line)}
+.combo{font-size:20px}
+.combo.pop{transform:scale(1.6) rotate(-8deg)}
+.pill b{transition:transform .2s}
+.end .score{animation:pop .4s .1s backwards}
+@media (max-width:420px){.buddy{height:92px}.mchr{width:88px;height:88px}}
+@media (prefers-reduced-motion: reduce){.eyes,.mchr svg,.hero-chr svg{animation:none!important}}
+.buddy{height:128px}
+.mchr{width:124px;height:124px}
+.buddy::after{width:100px}
+@media (max-width:420px){.buddy{height:108px}.mchr{width:104px;height:104px}}
