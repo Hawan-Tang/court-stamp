@@ -629,3 +629,11 @@ body.playing .qslide{will-change:transform;touch-action:pan-y}
 .plist .prow+.prow{border-top:1px solid var(--line)}
 .nex{margin-top:6px;padding:8px 10px;border-radius:10px;background:var(--faint);font-size:14px;line-height:1.65}
 .nex b{display:inline-block;margin-right:6px;padding:0 6px;border-radius:6px;background:var(--indigo-soft);color:var(--indigo);font-size:12px}
+/* v17：選項解說 */
+.opt .why{display:block;margin-top:6px;font-size:14px;line-height:1.6;font-weight:500;color:var(--muted)}
+.opt.right .why{color:var(--ok)}
+.opt.wrong .why{color:var(--verm)}
+.opt.dim:has(.why){opacity:1}
+.opt.dim:has(.why)>span{opacity:.75}
+.opt.dim:has(.why) .why{opacity:1}
+.end ~ section .why,section .why{display:block;font-size:14px;font-weight:500;margin-top:2px}
