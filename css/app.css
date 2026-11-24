@@ -579,3 +579,18 @@ button,a,input,label,.opt,.pc,.mi,.tfcard{touch-action:manipulation;-webkit-user
 .toast.out{opacity:0}
 @keyframes toastin{from{transform:translate(-50%,10px);opacity:0}}
 .qtrack em{right:26px}
+
+/* v9：底部按鈕列（無吉祥物）、滑動 */
+body.playing main{touch-action:pan-y}
+.qfoot{background:var(--page);border-top:0;padding-top:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));border-radius:24px 24px 0 0;pointer-events:auto;box-shadow:0 -6px 20px rgba(0,0,0,.18)}
+.qfoot .in{height:auto;align-items:center;gap:10px;pointer-events:auto}
+.qfoot .in::before{display:none}
+.fbtn{display:flex;align-items:center;justify-content:center;gap:8px;height:54px;border-radius:18px;border:0;font-size:16px;font-weight:900;padding:0 18px}
+.fbtn svg{width:22px;height:22px;flex:none}
+.fbtn.ghost{flex:1;background:var(--faint);color:var(--muted)}
+.fbtn.ghost.art{flex:0 0 auto;color:var(--ink)}
+.fbtn.ghost[disabled]{opacity:.4}
+.fbtn.primary{flex:1.6;background:var(--indigo);color:#fff;box-shadow:0 4px 0 var(--indigo-d);animation:pop .3s}
+.fbtn.primary:active{transform:translateY(3px);box-shadow:0 1px 0 var(--indigo-d)}
+.fbtn.primary svg{width:20px;height:20px}
+main{padding-bottom:120px}
