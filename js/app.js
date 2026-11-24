@@ -207,7 +207,20 @@ const buzzSoft = () => {};
 /* 朗讀：瀏覽器內建語音 */
 const TTS_OK = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
 let ttsVoice = null, ttsBtn = null;
-function pickVoice() { try { const vs = speechSynthesis.getVoices(); ttsVoice = vs.find(v => /zh[-_]TW/i.test(v.lang)) || vs.find(v => /zh[-_](HK|Hant)/i.test(v.lang)) || vs.find(v => /^zh/i.test(v.lang)) || null; } catch (e) {} }
+/* iPhone 的中文語音清單裡混有 Eddy、Grandpa、Rocko 這類合成怪聲，要避開；優先美佳等正常國語語音 */
+const VOICE_BAD = /Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley|Bells|Bubbles|Jester|Organ|Whisper|Zarvox|Boing|Cellos|Trinoids|Wobble|Albert|Fred|Junior|Ralph|Kathy|Superstar|Bahh|News/i;
+const VOICE_GOOD = /Mei-?Jia|美佳|HsiaoChen|HsiaoYu|Yating|Hanhan|Zhiwei|國語|臺灣|台灣/i;
+let zhVoices = [];
+function pickVoice() {
+  try {
+    const vs = speechSynthesis.getVoices();
+    zhVoices = vs.filter(v => /^(zh|cmn)/i.test(v.lang));
+    const tw = zhVoices.filter(v => /(zh|cmn)[-_](TW|Hant)/i.test(v.lang) || /臺灣|台灣/.test(v.name));
+    const mine = ST.set.voice && zhVoices.find(v => v.name === ST.set.voice);
+    const hq = /Enhanced|Premium|增強|優化|高品質|Natural|Neural|Online/i;
+    ttsVoice = mine || tw.find(v => VOICE_GOOD.test(v.name) && hq.test(v.name) && !VOICE_BAD.test(v.name)) || tw.find(v => VOICE_GOOD.test(v.name) && !VOICE_BAD.test(v.name)) || tw.find(v => v.localService && !VOICE_BAD.test(v.name)) || tw.find(v => !VOICE_BAD.test(v.name)) || null;
+  } catch (e) {}
+}
 if (TTS_OK) { pickVoice(); try { speechSynthesis.onvoiceschanged = pickVoice; } catch (e) {} }
 const ttsNorm = t => String(t || '').replace(/\(\d+\)/g, '').replace(/第(\d+)-(\d+)條/g, '第$1條之$2').replace(/[「」＿_]/g, '').replace(/\s+/g, ' ');
 let ttsTimer = 0, ttsSeq = 0;
@@ -223,6 +236,7 @@ function speak(text, btn) {
   say(text, btn);
 }
 function say(text, btn) {
+  try { if (ac && ac.state === 'running') ac.suspend(); } catch (e) {}
   try {
     const u = new SpeechSynthesisUtterance(ttsNorm(text));
     u.lang = ttsVoice ? ttsVoice.lang : 'zh-TW'; if (ttsVoice) u.voice = ttsVoice; u.rate = ST.set.ttsRate || 1;
@@ -248,7 +262,8 @@ function openSettings() {
   el.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="設定"><div class="grab"></div><div class="shead"><span></span><h2>設定</h2><button class="sdone" id="sclose">完成</button></div>
     <div class="sgroup">${sw('sound', '音效')}<label class="srow vol ${ST.set.sound ? '' : 'off'}"><span><b>音量</b></span><input type="range" id="vol" min="0" max="1" step="0.05" value="${ST.set.vol}"></label>${sw('vib', '震動', '答錯時手機震一下')}${sw('anim', '動畫', '角色動作、紙花、滑入效果')}</div>
     <div class="sgroup">${sw('hl', '螢光筆標色', '數字、主體、例外字上色')}${sw('notes', '註釋', '專有名詞可以點開解釋')}</div>
-    ${TTS_OK ? `<div class="sgroup">${sw('tts', '自動朗讀', '題目出現時念題目，答完念條文')}<label class="srow"><span><b>語速</b></span><input type="range" id="ttsRate" min="0.6" max="1.6" step="0.1" value="${ST.set.ttsRate || 1}"></label></div>` : ''}
+    ${TTS_OK ? `<div class="sgroup">${sw('tts', '自動朗讀', '題目出現時念題目，答完念條文')}<label class="srow"><span><b>語速</b></span><input type="range" id="ttsRate" min="0.6" max="1.6" step="0.1" value="${ST.set.ttsRate || 1}"></label>${zhVoices.length ? `<label class="srow"><span><b>聲音</b></span><select id="ttsVoice" class="ssel"><option value="">自動${ttsVoice && !ST.set.voice ? `（${esc(ttsVoice.name)}）` : ''}</option>${zhVoices.map(v => `<option value="${esc(v.name)}" ${ST.set.voice === v.name ? 'selected' : ''}>${esc(v.name)}　${esc(v.lang)}</option>`).join('')}</select></label>` : ''}</div>` : ''}
+    <div class="sver num">v${esc(window.APP_V || '')}</div>
     </div>`;
   document.body.appendChild(el);
   const close = () => { el.classList.add('out'); setTimeout(() => el.remove(), 200); if (!document.body.classList.contains('playing')) route(); };
@@ -256,6 +271,7 @@ function openSettings() {
   document.getElementById('sclose').onclick = close;
   el.querySelectorAll('.sw').forEach(c => c.onchange = () => { ST.set[c.dataset.k] = c.checked; save(); applyAnim(); el.querySelector('.vol').classList.toggle('off', !ST.set.sound); if (c.dataset.k === 'sound' && c.checked) sOk(); });
     const tr = document.getElementById('ttsRate'); if (tr) { tr.oninput = () => { ST.set.ttsRate = +tr.value; save(); }; tr.onchange = () => speak('每日目標三十題'); }
+  const tv = document.getElementById('ttsVoice'); if (tv) tv.onchange = () => { ST.set.voice = tv.value; save(); pickVoice(); speak('法院組織法第八十六條，訴訟之辯論及裁判之宣示，應公開法庭行之。'); };
   const v = document.getElementById('vol'); v.oninput = () => { ST.set.vol = +v.value; save(); }; v.onchange = () => sOk();
 }
 
