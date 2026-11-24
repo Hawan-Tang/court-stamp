@@ -547,3 +547,12 @@ button,a,input,label,.opt,.pc,.mi,.tfcard{touch-action:manipulation;-webkit-user
 .pastgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .pastbtn{min-height:0;gap:2px}
 .pastbtn b{font-size:18px}
+
+/* v6：答錯重出時間設定、題目卡標籤接合 */
+.srow.col{flex-direction:column;align-items:stretch;gap:10px;cursor:default}
+.segc{display:grid;grid-template-columns:repeat(5,1fr);background:var(--faint);border-radius:12px;padding:3px;gap:3px}
+.segc button{border:0;background:none;border-radius:9px;padding:8px 0;font-size:14px;font-weight:700;color:var(--muted)}
+.segc button.on{background:var(--page);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.qcard{border-top-left-radius:0;margin-top:30px}
+.qtab{top:-28px;height:28px;padding:0 16px;display:flex;align-items:center;border-radius:14px 14px 0 0}
+.qtab::after{content:"";position:absolute;right:-14px;bottom:0;width:14px;height:14px;background:radial-gradient(circle at 100% 0,transparent 13.5px,var(--page) 14px)}
