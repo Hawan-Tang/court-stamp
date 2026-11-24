@@ -1,5 +1,5 @@
 // 離線快取：有網路時一律抓最新版，離線時用上次存下的檔案。
-const VERSION = 'tws-v2-20261124';
+const VERSION = 'tws-v4-20261124';
 const FILES = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/data.js', 'js/laws.js', 'js/chars.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
