@@ -543,3 +543,7 @@ button,a,input,label,.opt,.pc,.mi,.tfcard{touch-action:manipulation;-webkit-user
 .sw::after{width:27px;height:27px;left:2px;top:2px}
 .sw:checked::after{transform:translateX(20px)}
 @media (min-width:600px){.sheet-wrap{align-items:center}.sheet{border-radius:24px;max-width:420px}}
+
+.pastgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.pastbtn{min-height:0;gap:2px}
+.pastbtn b{font-size:18px}
