@@ -22,7 +22,7 @@ const LV = D.levels, LVI = {}; LV.forEach((l, i) => LVI[l.id] = i);
 const O = {}; (D.order || []).forEach(o => O[o.id] = o);
 function load() { try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.r) return v; } catch (e) {} return { r: {}, lv: {}, mute: false, mocks: [], quick: 0 }; }
 const ST = load(); ST.lv = ST.lv || {}; ST.mocks = ST.mocks || [];
-ST.set = Object.assign({ sound: ST.mute ? false : true, vol: 0.8, vib: true, anim: true, hl: ST.hl === false ? false : true, notes: true }, ST.set || {});
+ST.set = Object.assign({ sound: ST.mute ? false : true, vol: 0.6, vib: true, anim: true, hl: ST.hl === false ? false : true, notes: true }, ST.set || {});
 ST.mode = ST.mode || 'all'; ST.goal = ST.goal || 30; ST.gifts = ST.gifts || {};
 ST.srs = ST.srs || {}; ST.days = ST.days || {}; ST.coins = ST.coins || 0; ST.owned = ST.owned || ['turtle']; ST.chr = ST.chr || 'turtle';
 let GOAL = ST.goal;
@@ -156,14 +156,27 @@ function noise(d, freq, vol, st) {
 }
 let comboNow = 0;
 const semi = n => Math.pow(2, n / 12);
-const sTap = () => tone([[1400, .035, 0, 'sine', .06]]);
-const sOk = () => { const k = semi(Math.min(comboNow, 10)); tone([[784 * k, .1, 0, 'triangle', .2], [1175 * k, .16, .07, 'triangle', .2], [1568 * k, .22, .07, 'sine', .07]]); if (comboNow && comboNow % 5 === 0) tone([[2093, .12, .2, 'sine', .1], [2637, .2, .28, 'sine', .1]]); };
-const sBad = () => { tone([[220, .2, 0, 'square', .07, 140], [165, .25, .08, 'triangle', .12, 110]]); };
-const sStamp = () => { noise(.12, 300, .5); tone([[110, .25, 0, 'sine', .45, 55]]); };
-const sCoin = () => tone([[1318, .07, 0, 'square', .05], [1976, .14, .06, 'square', .05]]);
-const sFlip = () => noise(.14, 2400, .25);
-const sPlace = () => { noise(.05, 1800, .2); tone([[880, .05, 0, 'sine', .08]]); };
-const sWin = () => tone([[523, .12, 0], [659, .12, .1], [784, .12, .2], [1046, .45, .3], [784, .45, .3, 'sine', .08], [659, .45, .3, 'sine', .06]]);
+/* 柔和的撥弦音：基音＋八度泛音，快速衰減 */
+function pluck(f, st, vol, dur) {
+  if (!ST.set.sound) return;
+  try {
+    const a = ctx(), t = a.currentTime + (st || 0), d = dur || .5, v = Math.max(0.0002, (vol || .14) * ST.set.vol);
+    const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200; lp.connect(a.destination);
+    [[1, 1], [2.01, .28], [3.02, .08]].forEach(([m, k]) => {
+      const o = a.createOscillator(), g = a.createGain(); o.type = 'sine'; o.frequency.value = f * m;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v * k, t + .006); g.gain.exponentialRampToValueAtTime(0.0001, t + d / m);
+      o.connect(g).connect(lp); o.start(t); o.stop(t + d + .05);
+    });
+  } catch (e) {}
+}
+const sTap = () => pluck(1320, 0, .025, .06);
+const sOk = () => { const k = semi(Math.min(comboNow - 1, 7) > 0 ? Math.min(comboNow - 1, 7) : 0); pluck(880 * k, 0, .13, .5); pluck(1319 * k, .09, .12, .7); if (comboNow && comboNow % 5 === 0) { pluck(1760, .22, .07, .6); pluck(2217, .3, .06, .8); } };
+const sBad = () => { if (!ST.set.sound) return; tone([[330, .22, 0, 'sine', .11, 220]]); };
+const sStamp = () => { tone([[150, .2, 0, 'sine', .22, 75]]); };
+const sCoin = () => { pluck(1568, 0, .08, .4); pluck(2093, .07, .07, .6); };
+const sFlip = () => noise(.12, 1400, .07);
+const sPlace = () => pluck(988, 0, .07, .3);
+const sWin = () => { [523, 659, 784, 1047].forEach((f, i) => pluck(f, i * .09, .11, .8)); };
 const buzz = ms => { if (!ST.set.vib) return; try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
 document.addEventListener('pointerdown', e => { if (e.target.closest('.btn,.opt,.tile,.start,.tfb,.pc,.mi,.chip,.mode,.tabs a,.seg a,.slot,.charcard,.icon-btn,.seqpool button,.go,.mtab,.side,.orb,.sw')) sTap(); }, true);
 const GEAR = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.3 7.3 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.3 7.3 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.3 7.3 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>';
@@ -177,10 +190,10 @@ function openSettings() {
   const old = document.getElementById('sheet'); if (old) old.remove();
   const sw = (k, label, sub) => `<label class="srow"><span><b>${label}</b>${sub ? `<small>${sub}</small>` : ''}</span><input type="checkbox" class="sw" data-k="${k}" ${ST.set[k] ? 'checked' : ''}></label>`;
   const el = document.createElement('div'); el.id = 'sheet'; el.className = 'sheet-wrap';
-  el.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="設定"><div class="grab"></div><h2>設定</h2>
+  el.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="設定"><div class="grab"></div><div class="shead"><span></span><h2>設定</h2><button class="sdone" id="sclose">完成</button></div>
     <div class="sgroup">${sw('sound', '音效')}<label class="srow vol ${ST.set.sound ? '' : 'off'}"><span><b>音量</b></span><input type="range" id="vol" min="0" max="1" step="0.05" value="${ST.set.vol}"></label>${sw('vib', '震動', '答錯時手機震一下')}${sw('anim', '動畫', '角色動作、紙花、滑入效果')}</div>
     <div class="sgroup">${sw('hl', '螢光筆標色', '數字、主體、例外字上色')}${sw('notes', '註釋', '專有名詞可以點開解釋')}</div>
-    <button class="btn wide" id="sclose">完成</button></div>`;
+    </div>`;
   document.body.appendChild(el);
   const close = () => { el.classList.add('out'); setTimeout(() => el.remove(), 200); if (!document.body.classList.contains('playing')) route(); };
   el.addEventListener('click', e => { if (e.target === el) close(); });
@@ -293,7 +306,7 @@ function vHome() {
   document.getElementById('mset').onclick = openSettings;
   document.getElementById('goalEdit').onclick = () => { const opts = [20, 30, 50, 80]; ST.goal = opts[(opts.indexOf(ST.goal) + 1) % opts.length]; GOAL = ST.goal; const dd = ST.days[today()]; if (dd && dd.goal && dd.right < GOAL) dd.goal = 0; save(); vHome(); };
   const hc = document.getElementById('hc');
-  hc.onclick = () => { hc.innerHTML = CHARS.svg(ST.chr, 'happy'); hc.classList.remove('jump'); void hc.offsetWidth; hc.classList.add('jump'); tone([[880, .08, 0], [1175, .12, .07]]); setTimeout(() => { hc.innerHTML = CHARS.svg(ST.chr, 'idle'); }, 900); };
+  hc.onclick = () => { hc.innerHTML = CHARS.svg(ST.chr, 'happy'); hc.classList.remove('jump'); void hc.offsetWidth; hc.classList.add('jump'); pluck(880, 0, .1, .4); pluck(1175, .08, .1, .5); setTimeout(() => { hc.innerHTML = CHARS.svg(ST.chr, 'idle'); }, 900); };
 }
 const GIFT = '<svg viewBox="0 0 24 24"><rect x="3.5" y="9" width="17" height="11.5" rx="2" fill="#F2994A"/><rect x="2.5" y="7" width="19" height="4.5" rx="1.5" fill="#F7B267"/><rect x="10.8" y="7" width="2.4" height="13.5" fill="#FFE08A"/><path d="M12 7c-2-4-6-3-4.5-.5M12 7c2-4 6-3 4.5-.5" fill="none" stroke="#FFE08A" stroke-width="2" stroke-linecap="round"/></svg>';
 const TROPHY = '<svg viewBox="0 0 24 24"><path d="M7 4h10v5a5 5 0 0 1-10 0z" fill="#fff"/><path d="M7 6H4a3 3 0 0 0 3.5 4M17 6h3a3 3 0 0 1-3.5 4" fill="none" stroke="#fff" stroke-width="1.8"/><rect x="10.6" y="13.5" width="2.8" height="3.5" fill="#fff"/><rect x="8" y="17" width="8" height="3" rx="1" fill="#fff"/></svg>';
@@ -326,7 +339,7 @@ function vChars() {
   }).join('')}</div>`;
   $app.querySelectorAll('.charcard').forEach(b => b.onclick = () => {
     const c = CHARS.list.find(x => x.id === b.dataset.c);
-    if (ST.owned.includes(c.id)) { ST.chr = c.id; save(); tone([[700, .1, 0]]); vChars(); return; }
+    if (ST.owned.includes(c.id)) { ST.chr = c.id; save(); pluck(988, 0, .1, .4); vChars(); return; }
     if (ST.coins >= c.price) { ST.coins -= c.price; ST.owned.push(c.id); ST.chr = c.id; save(); sCoin(); setTimeout(sWin, 150); vChars(); const nc = $app.querySelector(`.charcard[data-c="${c.id}"]`); nc && confetti(nc, 24); const n = $app.querySelector(`.charcard[data-c="${c.id}"]`); n && n.classList.add('jump'); return; }
     b.classList.add('shake'); sBad(); setTimeout(() => b.classList.remove('shake'), 400);
   });
