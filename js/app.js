@@ -4,7 +4,7 @@ const D = window.DATA, LAWS = window.LAWS;
 const KEY = 'tws-game-v1';
 const $app = document.getElementById('app');
 const LAWN = { org: '法院組織法', civ: '民事訴訟法', crim: '刑事訴訟法' };
-const LAWS_SHORT = { '法院組織法': '法組', '民事訴訟法': '民訴', '刑事訴訟法': '刑訴', '法庭旁聽規則': '旁聽', '法庭席位布置規則': '席位', '法庭錄音錄影及其利用保存辦法': '錄音錄影', '臺灣高等法院以下各級法院或分院臨時開庭辦法': '臨時開庭', '法院便民禮民實施要點': '便民' };
+const LAWS_SHORT = { '法院組織法': '法組', '民事訴訟法': '民訴', '刑事訴訟法': '刑訴', '法庭旁聽規則': '旁聽', '法庭席位布置規則': '席位', '法庭錄音錄影及其利用保存辦法': '錄音錄影', '臺灣高等法院以下各級法院或分院臨時開庭辦法': '臨時開庭', '法院便民禮民實施要點': '便民', '家事事件法': '家事' };
 const SHORT3 = { org: '法組', civ: '民訴', crim: '刑訴' };
 const L = 'ABCD';
 
@@ -65,7 +65,7 @@ function artLines(law, no) {
 /* ---------- 螢光筆：重點標色＋註釋 ---------- */
 const GL = {}; (D.glossary || []).forEach(g => GL[g.t] = g);
 const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const SUBJ = '最高法院|高等法院|地方法院|檢察總長|檢察事務官|檢察官|司法事務官|司法警察官|司法警察|審判長|受命法官|受託法官|法官|書記官|庭務員|法警|通譯|自訴人|告訴人|被害人|辯護人|輔佐人|代理人|當事人|債權人|債務人|被告|證人|鑑定人|旁聽人|法院';
+const SUBJ = '最高法院|高等法院|地方法院|檢察總長|檢察事務官|檢察官|司法事務官|司法警察官|司法警察|審判長|受命法官|受託法官|法官|書記官|庭務員|法警|通譯|自訴人|告訴人|被害人|辯護人|輔佐人|代理人|當事人|債權人|債務人|被告|證人|鑑定人|旁聽人|法院(?!組織法)';
 const KEYW = '不得|應即|始得|但|除外';
 const NEG = '錯誤|不正確|不包括|不屬於|不得為|無須';
 const HLRE = new RegExp(`(${Object.keys(GL).sort((a, b) => b.length - a.length).map(reEsc).join('|') || '\\uFFFF'})|([零一二三四五六七八九十百千萬兩0-9]+(?:個月|小時|日|月|年|人|元|次|歲|公分|分鐘))|(${SUBJ})|(${NEG})|(${KEYW})`, 'g');
@@ -161,22 +161,22 @@ function pluck(f, st, vol, dur) {
   if (!ST.set.sound) return;
   try {
     const a = ctx(), t = a.currentTime + (st || 0), d = dur || .5, v = Math.max(0.0002, (vol || .14) * ST.set.vol);
-    const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200; lp.connect(a.destination);
-    [[1, 1], [2.01, .28], [3.02, .08]].forEach(([m, k]) => {
+    const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.Q.value = 0.3; lp.connect(a.destination);
+    [[1, 1], [2, .12]].forEach(([m, k]) => {
       const o = a.createOscillator(), g = a.createGain(); o.type = 'sine'; o.frequency.value = f * m;
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v * k, t + .006); g.gain.exponentialRampToValueAtTime(0.0001, t + d / m);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v * k, t + .018); g.gain.exponentialRampToValueAtTime(0.0001, t + d / m);
       o.connect(g).connect(lp); o.start(t); o.stop(t + d + .05);
     });
   } catch (e) {}
 }
-const sTap = () => pluck(1320, 0, .025, .06);
-const sOk = () => { const k = semi(Math.min(comboNow - 1, 7) > 0 ? Math.min(comboNow - 1, 7) : 0); pluck(880 * k, 0, .13, .5); pluck(1319 * k, .09, .12, .7); if (comboNow && comboNow % 5 === 0) { pluck(1760, .22, .07, .6); pluck(2217, .3, .06, .8); } };
-const sBad = () => { if (!ST.set.sound) return; tone([[330, .22, 0, 'sine', .11, 220]]); };
-const sStamp = () => { tone([[150, .2, 0, 'sine', .22, 75]]); };
-const sCoin = () => { pluck(1568, 0, .08, .4); pluck(2093, .07, .07, .6); };
-const sFlip = () => noise(.12, 1400, .07);
-const sPlace = () => pluck(988, 0, .07, .3);
-const sWin = () => { [523, 659, 784, 1047].forEach((f, i) => pluck(f, i * .09, .11, .8)); };
+const sTap = () => pluck(523, 0, .018, .08);
+const sOk = () => { const c = Math.max(0, Math.min(comboNow - 1, 5)), k = semi(c); pluck(523 * k, 0, .14, .6); pluck(659 * k, .1, .12, .8); if (comboNow && comboNow % 5 === 0) { pluck(784, .24, .08, .8); pluck(1047, .34, .06, 1); } };
+const sBad = () => { if (!ST.set.sound) return; tone([[262, .26, 0, 'sine', .09, 196]]); };
+const sStamp = () => { tone([[130, .22, 0, 'sine', .2, 70]]); };
+const sCoin = () => { pluck(784, 0, .09, .5); pluck(988, .08, .08, .7); };
+const sFlip = () => noise(.14, 700, .05);
+const sPlace = () => pluck(587, 0, .08, .35);
+const sWin = () => { [392, 494, 587, 784].forEach((f, i) => pluck(f, i * .1, .11, 1)); };
 const buzz = ms => { if (!ST.set.vib) return; try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
 document.addEventListener('pointerdown', e => { if (e.target.closest('.btn,.opt,.tile,.start,.tfb,.pc,.mi,.chip,.mode,.tabs a,.seg a,.slot,.charcard,.icon-btn,.seqpool button,.go,.mtab,.side,.orb,.sw')) sTap(); }, true);
 const GEAR = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.3 7.3 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.3 7.3 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.3 7.3 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>';
@@ -306,7 +306,7 @@ function vHome() {
   document.getElementById('mset').onclick = openSettings;
   document.getElementById('goalEdit').onclick = () => { const opts = [20, 30, 50, 80]; ST.goal = opts[(opts.indexOf(ST.goal) + 1) % opts.length]; GOAL = ST.goal; const dd = ST.days[today()]; if (dd && dd.goal && dd.right < GOAL) dd.goal = 0; save(); vHome(); };
   const hc = document.getElementById('hc');
-  hc.onclick = () => { hc.innerHTML = CHARS.svg(ST.chr, 'happy'); hc.classList.remove('jump'); void hc.offsetWidth; hc.classList.add('jump'); pluck(880, 0, .1, .4); pluck(1175, .08, .1, .5); setTimeout(() => { hc.innerHTML = CHARS.svg(ST.chr, 'idle'); }, 900); };
+  hc.onclick = () => { hc.innerHTML = CHARS.svg(ST.chr, 'happy'); hc.classList.remove('jump'); void hc.offsetWidth; hc.classList.add('jump'); pluck(523, 0, .1, .5); pluck(659, .09, .1, .6); setTimeout(() => { hc.innerHTML = CHARS.svg(ST.chr, 'idle'); }, 900); };
 }
 const GIFT = '<svg viewBox="0 0 24 24"><rect x="3.5" y="9" width="17" height="11.5" rx="2" fill="#F2994A"/><rect x="2.5" y="7" width="19" height="4.5" rx="1.5" fill="#F7B267"/><rect x="10.8" y="7" width="2.4" height="13.5" fill="#FFE08A"/><path d="M12 7c-2-4-6-3-4.5-.5M12 7c2-4 6-3 4.5-.5" fill="none" stroke="#FFE08A" stroke-width="2" stroke-linecap="round"/></svg>';
 const TROPHY = '<svg viewBox="0 0 24 24"><path d="M7 4h10v5a5 5 0 0 1-10 0z" fill="#fff"/><path d="M7 6H4a3 3 0 0 0 3.5 4M17 6h3a3 3 0 0 1-3.5 4" fill="none" stroke="#fff" stroke-width="1.8"/><rect x="10.6" y="13.5" width="2.8" height="3.5" fill="#fff"/><rect x="8" y="17" width="8" height="3" rx="1" fill="#fff"/></svg>';
@@ -339,7 +339,7 @@ function vChars() {
   }).join('')}</div>`;
   $app.querySelectorAll('.charcard').forEach(b => b.onclick = () => {
     const c = CHARS.list.find(x => x.id === b.dataset.c);
-    if (ST.owned.includes(c.id)) { ST.chr = c.id; save(); pluck(988, 0, .1, .4); vChars(); return; }
+    if (ST.owned.includes(c.id)) { ST.chr = c.id; save(); pluck(587, 0, .1, .5); vChars(); return; }
     if (ST.coins >= c.price) { ST.coins -= c.price; ST.owned.push(c.id); ST.chr = c.id; save(); sCoin(); setTimeout(sWin, 150); vChars(); const nc = $app.querySelector(`.charcard[data-c="${c.id}"]`); nc && confetti(nc, 24); const n = $app.querySelector(`.charcard[data-c="${c.id}"]`); n && n.classList.add('jump'); return; }
     b.classList.add('shake'); sBad(); setTimeout(() => b.classList.remove('shake'), 400);
   });
@@ -472,10 +472,10 @@ function runItems(items, opt) {
   function choose(bs, ck, k) { bs.forEach(x => x.disabled = true); bs.forEach((x, i) => { if (i === ck) { x.classList.add('right'); markO(x); } else if (i === k) { x.classList.add('wrong'); markX(x); } else x.classList.add('dim'); }); }
   function drawQ(it) {
     const q = Q[it.id], perm = shuffle([0, 1, 2, 3]);
-    $app.innerHTML = card(it, LAWTAB[lawOfId(it.id)], `<p class="qtext">${hlText(q.q, true)}</p>`) +
+    $app.innerHTML = card(it, LAWTAB[lawOfId(it.id)] + (q.ex ? '・' + q.ex + '考題' : ''), `<p class="qtext">${hlText(q.q, true)}</p>`) +
       `<div class="opts">${perm.map((p, k) => `<button class="opt" data-k="${k}"><span class="L">${L[k]}</span><span>${esc(q.opts[p])}</span></button>`).join('')}</div><div id="ex"></div>`;
     const bs = [...$app.querySelectorAll('.opt')], ck = perm.indexOf(q.ans);
-    const go = k => { choose(bs, ck, k); result(k === ck, srcOf(q.law, q.no, q.quote, [q.q, q.opts[q.ans]])); };
+    const go = k => { choose(bs, ck, k); const sr = srcOf(q.law, q.no, q.quote, [q.q, q.opts[q.ans]]); if (q.ex) sr.label = `${q.ex}考題　依現行 ${q.law} ${q.no}`; result(k === ck, sr); };
     bs.forEach(b => b.onclick = () => go(+b.dataset.k));
     S.reveal = () => go(-1);
   }
@@ -599,14 +599,16 @@ function vModes() {
    <button class="mode" data-m="rand">${MODE_ICONS.mock}<b>隨機選擇題</b><span>20 題・共 ${qn} 題</span></button>
    <button class="mode" data-m="wrongbook">${MODE_ICONS.mock.replace('M9 10h6M9 14h6M9 18h3', 'M9.5 11l5 5M14.5 11l-5 5')}<b>錯題本</b><span>${wrongIds().length} 題</span></button>
   </div>
+  ${(() => { const g = {}; D.questions.filter(q => q.ex).forEach(q => { const k = q.ex + '|' + (q.id.includes('-ORG-') ? '法院組織法大意' : '民刑訴大意'); (g[k] = g[k] || []).push(q.id); }); const ks = Object.keys(g).sort().reverse(); return ks.length ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>歷屆試題</h2><div class="pastgrid">${ks.map(k => { const [y, t] = k.split('|'); const done = g[k].filter(id => ST.r[id]).length; return `<button class="mode pastbtn" data-past="${k}"><b>${y}</b><span>${t}</span><span class="num">${done}/${g[k].length}</span></button>`; }).join('')}</div></section>` : ''; })()}
   <section style="display:flex;flex-direction:column;gap:10px"><h2>模擬考</h2>
    <button class="mode" data-m="mock1" style="min-height:0"><b>法院組織法大意</b><span>50 題・60 分鐘・每題 2 分</span></button>
    <button class="mode" data-m="mock2" style="min-height:0"><b>民事訴訟法大意與刑事訴訟法大意</b><span>民訴 25＋刑訴 25・60 分鐘</span></button>
    ${ST.mocks.length ? `<div class="list">${ST.mocks.slice(-6).reverse().map(m => `<div class="row"><div><div>${esc(m.t)}</div><div class="r">${esc(m.d)}</div></div><b class="num" style="font-size:20px">${m.s}</b></div>`).join('')}</div>` : ''}
   </section>`;
   $app.querySelectorAll('.chip').forEach(b => b.onclick = () => { FILTER = b.dataset.f; vModes(); });
+  $app.querySelectorAll('.pastbtn').forEach(b => b.onclick = e => { e.stopPropagation(); reset(); const [y, t] = b.dataset.past.split('|'); const ids = D.questions.filter(q => q.ex === y && (t === '法院組織法大意') === q.id.includes('-ORG-')).map(q => q.id).sort(); runItems(ids.map(id => ({ t: 'q', id })), { back: () => goTab('modes') }); });
   const back = () => goTab('modes');
-  $app.querySelectorAll('.mode').forEach(b => b.onclick = () => {
+  $app.querySelectorAll('.mode[data-m]').forEach(b => b.onclick = () => {
     reset(); const m = b.dataset.m;
     if (m === 'card') { const seen = new Set(), cards = []; shuffle(D.questions.filter(q => inFilter(q.unit))).forEach(q => { const k = q.law + q.no; if (!seen.has(k)) { seen.add(k); cards.push({ law: q.law, no: q.no }); } }); document.body.classList.add('playing'); readCards(cards.slice(0, 20), { back, done: back, repeat: true, doneLabel: '完成' }); }
     else if (m === 'cloze') runItems(shuffle(D.cloze.filter(z => inFilter(z.unit))).slice(0, 15).map(z => ({ t: 'z', id: z.id })), { back });
