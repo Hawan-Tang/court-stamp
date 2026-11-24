@@ -36,7 +36,7 @@ const SRS_T = { q: 1, z: 1, o: 1 };
 function srsUpdate(id, ok) {
   const s = ST.srs[id] || { l: 0, due: 0 };
   if (ok) { s.l = Math.min(s.l + 1, SRS_DAYS.length); s.due = Date.now() + SRS_DAYS[s.l - 1] * 864e5 - 3600e3; }
-  else { s.l = 0; s.due = Date.now() + retryMs(); }
+  else { s.l = 0; s.due = Date.now() + 864e5 - 3600e3; }   // 答錯：明天再複習（不在同一天幾分鐘後又跳出來）
   ST.srs[id] = s;
 }
 const typeOf = id => Q[id] ? 'q' : Z[id] ? 'z' : O[id] ? 'o' : T[id] ? 't' : SQ[id] ? 's' : 'm';
@@ -496,6 +496,10 @@ function bindFav(id) {
   paint();
   b.onclick = () => { if (ST.fav[id]) delete ST.fav[id]; else { ST.fav[id] = Date.now(); pluck(880, 0, .14, .3); pluck(1320, .06, .1, .4); } save(); paint(); b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); };
 }
+const WHY = window.WHY || {};
+/* 選項解說：why[原始選項索引]，「正確：」「錯：」開頭的那兩個字拿掉，改用顏色表示 */
+const whyText = (id, orig) => { const w = WHY[id]; return w && w[orig] ? w[orig].replace(/^(正確|錯)：\s*/, '') : ''; };
+function addWhy(bs, id, perm) { if (!WHY[id]) return; bs.forEach((b, k) => { const t = whyText(id, perm[k]); const sp = b.children[1]; if (t && sp) sp.insertAdjacentHTML('beforeend', `<small class="why">${esc(t)}</small>`); }); }
 const accepts = (q, orig) => orig === q.ans || (q.alt || []).includes(orig);
 const qHead = q => (q.ctx ? `<div class="qctx">${esc(q.ctx)}</div>` : '') + `<p class="qtext">${q.gen ? esc(q.q) : hlText(q.q, true)}</p>`;
 const XICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
@@ -631,7 +635,6 @@ function runItems(items, opt) {
     const it = items[S.i];
     mark(it.id, ok); S.answered++;
     if (ok) { S.right++; S.combo++; S.best = Math.max(S.best, S.combo); comboNow = S.combo; sOk(); } else { S.combo = 0; comboNow = 0; sBad(); buzz(120); }
-    if (!ok && opt.session && (it.retry || 0) < 2) pending.push({ at: Date.now() + retryMs(), it: { t: it.t, id: it.id, retry: (it.retry || 0) + 1 } });
     const qf = document.getElementById('qf'); if (qf) { qf.className = 'qflame' + (S.combo > 1 ? ' hot pop' : ''); qf.innerHTML = S.combo > 1 ? `<b>${S.combo}</b>` : FLAME; }
     const orb = document.getElementById('orb'), mc = document.getElementById('mc');
     if (ok) { const qc = document.querySelector('.qcard'); if (qc) confetti(qc, S.combo >= 5 ? 22 : 12); }
@@ -686,7 +689,7 @@ function runItems(items, opt) {
     $app.innerHTML = card(it, LAWTAB[lawOfId(it.id)] + (q.ex ? '・' + q.ex + '考題' : ''), `<p class="qtext">${hlText(q.q, true)}</p>`) +
       `<div class="opts">${perm.map((p, k) => `<button class="opt" data-k="${k}"><span class="L">${L[k]}</span><span>${esc(q.opts[p])}</span></button>`).join('')}</div><div id="ex"></div>`;
     const bs = [...$app.querySelectorAll('.opt')], ck = perm.indexOf(q.ans);
-    const go = k => { choose(bs, ck, k); const sr = srcOf(q.law, q.no, q.quote, [q.q, q.opts[q.ans]]); if (q.ex) sr.label = `${q.ex}考題　依現行 ${q.law} ${q.no}`; result(k === ck, sr); };
+    const go = k => { choose(bs, ck, k); addWhy(bs, q.id, perm); const sr = srcOf(q.law, q.no, q.quote, [q.q, q.opts[q.ans]]); if (q.ex) sr.label = `${q.ex}考題　依現行 ${q.law} ${q.no}`; result(k === ck, sr); };
     bs.forEach(b => b.onclick = () => go(+b.dataset.k));
     S.say = () => q.q + '。' + perm.map((p, k) => L[k] + '，' + q.opts[p]).join('。');
     S.reveal = () => go(-1);
@@ -938,7 +941,7 @@ function mockStart(title, list, opt) {
     $app.innerHTML = `<div class="end"><div class="score">${score}</div><div class="meta">${esc(title)}・答對 ${right} / ${M.items.length}</div></div>
     <div class="sheet">${M.items.map((it, i) => `<button class="${okAt(it, M.ans[i]) ? 'o' : 'x'}" data-i="${i}">${noOf(i)}</button>`).join('')}</div>
     <div class="btns"><button class="btn" id="bk">學法</button></div>
-    ${wrong.length ? `<section style="display:flex;flex-direction:column;gap:14px"><h2>答錯 ${wrong.length}</h2>${wrong.map(({ it, i }) => { const c = it.perm.indexOf(it.q.ans), a = M.ans[i]; return `<div id="w${i}" style="display:flex;flex-direction:column;gap:6px"><div class="meta">第 ${noOf(i)} 題</div>${it.q.ctx ? `<div class="qctx">${esc(it.q.ctx)}</div>` : ''}<div style="font-weight:700">${esc(it.q.q)}</div><div style="color:var(--ok);font-weight:700">(${L[c]}) ${esc(it.q.opts[it.q.ans])}</div>${a >= 0 ? `<div style="color:var(--verm);text-decoration:line-through">(${L[a]}) ${esc(it.q.opts[it.perm[a]])}</div>` : '<div class="muted">未作答</div>'}${it.q.gen ? '' : srcHTML(it.q.law, it.q.no, it.q.quote)}</div>`; }).join('')}</section>` : ''}`;
+    ${wrong.length ? `<section style="display:flex;flex-direction:column;gap:14px"><h2>答錯 ${wrong.length}</h2>${wrong.map(({ it, i }) => { const c = it.perm.indexOf(it.q.ans), a = M.ans[i]; return `<div id="w${i}" style="display:flex;flex-direction:column;gap:6px"><div class="meta">第 ${noOf(i)} 題</div>${it.q.ctx ? `<div class="qctx">${esc(it.q.ctx)}</div>` : ''}<div style="font-weight:700">${esc(it.q.q)}</div><div style="color:var(--ok);font-weight:700">(${L[c]}) ${esc(it.q.opts[it.q.ans])}${whyText(it.q.id, it.q.ans) ? `<small class="why">${esc(whyText(it.q.id, it.q.ans))}</small>` : ''}</div>${a >= 0 ? `<div style="color:var(--verm)"><s>(${L[a]}) ${esc(it.q.opts[it.perm[a]])}</s>${whyText(it.q.id, it.perm[a]) ? `<small class="why">${esc(whyText(it.q.id, it.perm[a]))}</small>` : ''}</div>` : '<div class="muted">未作答</div>'}${it.q.gen ? '' : srcHTML(it.q.law, it.q.no, it.q.quote)}</div>`; }).join('')}</section>` : ''}`;
     bindSrc($app);
     document.getElementById('bk').onclick = () => goTab('modes');
     $app.querySelectorAll('.sheet button.x').forEach(b => b.onclick = () => { const e = document.getElementById('w' + b.dataset.i); e && e.scrollIntoView({ behavior: 'smooth' }); });
