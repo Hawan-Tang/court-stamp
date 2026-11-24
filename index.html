@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Serif+TC:wght@700;900&display=swap">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Serif+TC:wght@700;900&display=swap"></noscript>
-<link rel="stylesheet" href="css/app.css?v=16">
+<link rel="stylesheet" href="css/app.css?v=17">
 <style>
 #boot{position:fixed;inset:0;z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;background:#F2F2F7;transition:opacity .35s}
 #boot img{width:96px;height:96px;border-radius:24px;animation:bootb 1.2s ease-in-out infinite}
@@ -59,7 +59,7 @@
 // 背景發現新版：還沒開始答題就直接重新整理
 if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', function (e) { if (e.data === 'updated' && !document.body.classList.contains('playing')) location.reload(); });
 (function () {
-  var V = '16', files = [['js/data.js', 1241373], ['js/laws.js', 596875], ['js/chars.js', 12175], ['js/app.js', 82795]];
+  var V = '17', files = [['js/data.js', 1241373], ['js/laws.js', 596875], ['js/why.js', 300000], ['js/chars.js', 12175], ['js/app.js', 92000]];
   window.APP_V = V;
   var got = files.map(function () { return 0; }), txt = [], left = files.length, t0 = Date.now(), shown = 0, bar = document.getElementById('bootbar');
   var total = files.reduce(function (a, f) { return a + f[1]; }, 0);
@@ -77,7 +77,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('mess
     var b = document.getElementById('boot'); b.classList.add('done'); setTimeout(function () { b.remove(); }, 400);
   }
   function fallback() { // 讀取失敗就改用一般方式載入
-    var i = 0; (function nx() { if (i >= files.length) { document.getElementById('boot').remove(); return; } var s = document.createElement('script'); s.src = files[i++][0] + '?v=' + V; s.onload = nx; document.body.appendChild(s); })();
+    var i = 0; (function nx() { if (i >= files.length) { document.getElementById('boot').remove(); return; } var s = document.createElement('script'); s.src = files[i++][0] + '?v=' + V; s.onload = s.onerror = nx; document.body.appendChild(s); })();
   }
   var failed = false;
   files.forEach(function (f, i) {
