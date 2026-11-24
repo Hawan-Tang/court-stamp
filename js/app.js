@@ -3,7 +3,7 @@
 const D = window.DATA, LAWS = window.LAWS;
 const KEY = 'tws-game-v1';
 const $app = document.getElementById('app');
-const LAWN = { org: '法院組織法', civ: '民事訴訟法', crim: '刑事訴訟法' };
+const LAWN = { org: '法院組織法', civ: '民事訴訟法', crim: '刑事訴訟法', chi: '國文', cie: '公民與英文' };
 const LAWS_SHORT = { '法院組織法': '法組', '民事訴訟法': '民訴', '刑事訴訟法': '刑訴', '法庭旁聽規則': '旁聽', '法庭席位布置規則': '席位', '法庭錄音錄影及其利用保存辦法': '錄音錄影', '臺灣高等法院以下各級法院或分院臨時開庭辦法': '臨時開庭', '法院便民禮民實施要點': '便民', '家事事件法': '家事' };
 const SHORT3 = { org: '法組', civ: '民訴', crim: '刑訴' };
 const L = 'ABCD';
@@ -12,6 +12,8 @@ const L = 'ABCD';
 const U = {}, Q = {}, Z = {}, T = {}, SQ = {}, IDX = {};
 D.units.forEach(u => U[u.id] = u);
 D.questions.forEach(q => Q[q.id] = q);
+const GEN = D.gen || []; GEN.forEach(q => { q.gen = 1; Q[q.id] = q; });
+const PSUBJ = { org: '法院組織法大意', cc: '民事訴訟法大意與刑事訴訟法大意', chi: '國文', cie: '公民與英文' };
 D.cloze.forEach(z => Z[z.id] = z);
 D.tf.forEach(t => T[t.id] = t);
 D.seqs.forEach(s => SQ[s.id] = s);
@@ -23,7 +25,7 @@ const O = {}; (D.order || []).forEach(o => O[o.id] = o);
 function load() { try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.r) return v; } catch (e) {} return { r: {}, lv: {}, mute: false, mocks: [], quick: 0 }; }
 const ST = load(); ST.lv = ST.lv || {}; ST.mocks = ST.mocks || [];
 ST.set = Object.assign({ sound: ST.mute ? false : true, vol: 0.6, vib: true, anim: true, hl: ST.hl === false ? false : true, notes: true, tts: false, ttsRate: 1 }, ST.set || {});
-ST.mode = ST.mode || 'all'; ST.goal = ST.goal || 30; ST.gifts = ST.gifts || {};
+ST.fav = ST.fav || {}; ST.mode = ST.mode || 'all'; ST.goal = ST.goal || 30; ST.gifts = ST.gifts || {};
 ST.srs = ST.srs || {}; ST.days = ST.days || {}; ST.coins = ST.coins || 0; ST.owned = ST.owned || ['turtle']; ST.chr = ST.chr || 'turtle';
 let GOAL = ST.goal;
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -87,7 +89,7 @@ function hlText(s, stem, inBtn) {
 function glossOf(...texts) { const all = texts.join(' '); return Object.keys(GL).filter(t => all.includes(t)); }
 function notesHTML(terms) {
   if (!terms.length || !ST.set.notes) return '';
-  return `<div class="notes"><b>註釋</b>${terms.map(t => { const g = GL[t]; return `<div class="note"><span class="term">${esc(t)}</span>${esc(g.n)}${g.law ? `<span class="muted">（${esc(g.law)} ${esc(g.no)}）</span>` : ''}</div>`; }).join('')}</div>`;
+  return `<div class="notes"><b>註釋</b>${terms.map(t => { const g = GL[t]; return `<div class="note"><span class="term">${esc(t)}</span>${esc(g.n)}${g.law ? `<span class="muted">（${esc(g.law)} ${esc(g.no)}）</span>` : ''}${g.ex ? `<div class="nex"><b>例</b>${esc(g.ex)}</div>` : ''}</div>`; }).join('')}</div>`;
 }
 let pop = null;
 function closePop() { if (pop) { pop.remove(); pop = null; } }
@@ -97,7 +99,7 @@ document.addEventListener('click', e => {
   e.stopPropagation(); closePop();
   const g = GL[b.dataset.t]; if (!g) return;
   pop = document.createElement('div'); pop.className = 'pop'; pop.setAttribute('role', 'dialog');
-  pop.innerHTML = `<b>${esc(g.t)}</b><div>${esc(g.n)}</div>${g.law ? `<div class="muted">${esc(g.law)} ${esc(g.no)}</div>` : ''}`;
+  pop.innerHTML = `<b>${esc(g.t)}</b><div>${esc(g.n)}</div>${g.ex ? `<div class="nex"><b>例</b>${esc(g.ex)}</div>` : ''}${g.law ? `<div class="muted">${esc(g.law)} ${esc(g.no)}</div>` : ''}`;
   document.body.appendChild(pop);
   const r = b.getBoundingClientRect(), pw = Math.min(320, window.innerWidth - 32);
   pop.style.width = pw + 'px';
@@ -296,9 +298,9 @@ function reset() { stopSpeak(); if (cleanup) { cleanup(); cleanup = null; } clos
 function route() {
   reset();
   const h = (location.hash || '#home').slice(1);
-  const views = { home: vHome, map: vMap, modes: vModes, chars: vChars, lookup: vNumbers, wrong: vWrong, numbers: vNumbers, laws: vLaws };
+  const views = { home: vHome, map: vMap, modes: vModes, chars: vChars, lookup: vNumbers, wrong: vWrong, fav: vFav, numbers: vNumbers, laws: vLaws };
   const v = views[h] ? h : 'home';
-  setTab(v);
+  setTab(v === 'fav' ? 'modes' : v);
   views[v]();
 }
 window.addEventListener('hashchange', route);
@@ -319,13 +321,14 @@ function confetti(el, n) {
 /* ========== 今日學習 ========== */
 const ROUND = 15;
 function buildSession() {
-  const now = Date.now(), inMode = id => ST.mode === 'all' || lawOfId(id) === ST.mode;
+  const now = Date.now(), inMode = id => ST.mode === 'all' ? !(Q[id] && Q[id].gen) : lawOfId(id) === ST.mode, gm = ST.mode === 'chi' || ST.mode === 'cie';
   const due = Object.keys(ST.srs).filter(id => ST.srs[id].due <= now && (Q[id] || Z[id] || O[id]) && inMode(id)).sort((a, b) => ST.srs[a].due - ST.srs[b].due).slice(0, 8).map(id => ({ t: typeOf(id), id }));
   const fresh = [];
-  for (const lv of LV) { if (ST.mode !== 'all' && lawOf(lv.unit) !== ST.mode) continue; for (const [t, id] of lv.items) { if (fresh.length >= ROUND) break; if (!ST.r[id] && !fresh.some(x => x.id === id)) fresh.push({ t, id }); } if (fresh.length >= ROUND) break; }
+  if (gm) GEN.filter(q => q.subj === ST.mode && !ST.r[q.id]).sort((a, b) => a.id < b.id ? 1 : -1).slice(0, ROUND).forEach(q => fresh.push({ t: 'q', id: q.id }));
+  if (!gm) for (const lv of LV) { if (ST.mode !== 'all' && lawOf(lv.unit) !== ST.mode) continue; for (const [t, id] of lv.items) { if (fresh.length >= ROUND) break; if (!ST.r[id] && !fresh.some(x => x.id === id)) fresh.push({ t, id }); } if (fresh.length >= ROUND) break; }
   const out = []; let a = 0, b = 0;
   while (out.length < ROUND && (a < due.length || b < fresh.length)) { if (a < due.length && (out.length % 2 === 0 || b >= fresh.length)) out.push(due[a++]); else if (b < fresh.length) out.push(fresh[b++]); }
-  if (out.length < ROUND) { const weak = shuffle(D.questions.filter(q => inMode(q.id) && !out.some(x => x.id === q.id))).slice(0, ROUND - out.length).map(q => ({ t: 'q', id: q.id })); out.push(...weak); }
+  if (out.length < ROUND) { const weak = shuffle((gm ? GEN : D.questions).filter(q => inMode(q.id) && !out.some(x => x.id === q.id))).slice(0, ROUND - out.length).map(q => ({ t: 'q', id: q.id })); out.push(...weak); }
   return out;
 }
 function startSession() { reset(); goalJustHit = false; runItems(buildSession(), { session: true, back: () => goTab('home') }); }
@@ -336,6 +339,8 @@ const MODES = [
   { k: 'org', t: '法院組織法', tab: '法組', c: 'var(--c-org)' },
   { k: 'civ', t: '民事訴訟法', tab: '民訴', c: 'var(--c-civ)' },
   { k: 'crim', t: '刑事訴訟法', tab: '刑訴', c: 'var(--c-crim)' },
+  ...(GEN.some(q => q.subj === 'chi') ? [{ k: 'chi', t: '國文', tab: '國文', c: 'var(--c-chi)' }] : []),
+  ...(GEN.some(q => q.subj === 'cie') ? [{ k: 'cie', t: '公民與英文', tab: '公英', c: 'var(--c-cie)' }] : []),
 ];
 const dkey = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 function weekDays() { const d = new Date(); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow); return [...Array(7)].map((_, i) => { const x = new Date(d); x.setDate(d.getDate() + i); return dkey(x); }); }
@@ -484,19 +489,29 @@ function readCards(cards, opt) {
 }
 
 /* ---------- 題目執行器 ---------- */
+const BOOKMARK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M6.5 3.5h11v17l-5.5-4-5.5 4z"/></svg>';
+function bindFav(id) {
+  const b = document.getElementById('qfav'); if (!b) return;
+  const paint = () => { const on = !!ST.fav[id]; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); };
+  paint();
+  b.onclick = () => { if (ST.fav[id]) delete ST.fav[id]; else { ST.fav[id] = Date.now(); pluck(880, 0, .14, .3); pluck(1320, .06, .1, .4); } save(); paint(); b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); };
+}
+const accepts = (q, orig) => orig === q.ans || (q.alt || []).includes(orig);
+const qHead = q => (q.ctx ? `<div class="qctx">${esc(q.ctx)}</div>` : '') + `<p class="qtext">${q.gen ? esc(q.q) : hlText(q.q, true)}</p>`;
 const XICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 function lawOfId(id) {
+  if (Q[id] && Q[id].gen) return Q[id].subj;
   const u = Q[id] ? Q[id].unit : Z[id] ? Z[id].unit : O[id] ? O[id].unit : T[id] ? T[id].unit : SQ[id] ? SQ[id].unit : (id.split('-')[0]);
   return U[u] ? U[u].law : 'org';
 }
-const LAWTAB = { org: '法組', civ: '民訴', crim: '刑訴' };
+const LAWTAB = { org: '法組', civ: '民訴', crim: '刑訴', chi: '國文', cie: '公民與英文' };
 function runItems(items, opt) {
   if (cleanup) { cleanup(); cleanup = null; }
   document.body.classList.add('playing');
   const S = { i: 0, right: 0, combo: 0, best: 0, answered: 0, done: false, reveal: null };
   const pending = [];
   S.hist = []; let viewIdx = null;
-  function snap() { const f = document.querySelector('.qfoot'); S.hist[S.i] = { app: $app.innerHTML, foot: f ? f.innerHTML : '', sayA: S.sayA }; }
+  function snap() { const f = document.querySelector('.qfoot'); S.hist[S.i] = { app: $app.innerHTML, foot: f ? f.innerHTML : '', sayA: S.sayA, id: (items[S.i] || {}).id }; }
   function bindStatic(sayA, live) {
     const x = document.getElementById('x'); if (x) x.onclick = opt.back;
     const qs = document.getElementById('qset'); if (qs) qs.onclick = openSettings;
@@ -514,7 +529,7 @@ function runItems(items, opt) {
     const d = document.createElement('div'); d.className = 'dock qfoot static'; d.innerHTML = h.foot; document.body.appendChild(d);
     const live = i === S.i;
     if (!live) { const nb = d.querySelector('.nextbtn span'); if (nb) nb.textContent = '下一題'; }
-    bindStatic(h.sayA, live);
+    bindStatic(h.sayA, live); if (h.id) bindFav(h.id);
     return true;
   }
   function toast(msg) {
@@ -603,7 +618,7 @@ function runItems(items, opt) {
   };
   const card = (it, tab, body) => {
     const fresh = !ST.r[it.id];
-    return top() + `<section class="qcard"><span class="qtab">${esc(tab)}</span><span class="qbadge ${fresh ? 'new' : 'rev'}">${fresh ? 'New' : '複習'}</span><div class="qbody">${body}</div>${TTS_OK ? `<button class="qspeak" id="qsp" aria-label="朗讀">${SPEAKER}</button>` : ''}<div class="qsrc" id="qs"></div></section>`;
+    return top() + `<section class="qcard"><span class="qtab">${esc(tab)}</span><span class="qbadge ${fresh ? 'new' : 'rev'}">${fresh ? 'New' : '複習'}</span><div class="qbody">${body}</div>${TTS_OK ? `<button class="qspeak" id="qsp" aria-label="朗讀">${SPEAKER}</button>` : ''}<button class="qfav ${ST.fav[it.id] ? 'on' : ''}" id="qfav" aria-label="收藏" aria-pressed="${ST.fav[it.id] ? 'true' : 'false'}">${BOOKMARK}</button><div class="qsrc" id="qs"></div></section>`;
   };
   function foot() {
     const d = document.createElement('div'); d.className = 'dock qfoot';
@@ -647,11 +662,26 @@ function runItems(items, opt) {
     if (sp) { sp.onclick = () => { if (sp.classList.contains('on')) { stopSpeak(); return; } speak(S.done ? S.sayA : (S.say && S.say()), sp); }; if (ST.set.tts && S.say) speakLater(() => S.say(), 'qsp', 250); }
     document.getElementById('x').onclick = opt.back;
     document.getElementById('qset').onclick = openSettings;
+    bindFav(it.id);
   }
   function markO(b) { b.insertAdjacentHTML('beforeend', '<span class="mk ok" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'); }
   function markX(b) { b.insertAdjacentHTML('beforeend', '<span class="mk no" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></span>'); b.classList.add('shake'); }
   function choose(bs, ck, k) { bs.forEach(x => x.disabled = true); bs.forEach((x, i) => { if (i === ck) { x.classList.add('right'); markO(x); } else if (i === k) { x.classList.add('wrong'); markX(x); } else x.classList.add('dim'); }); }
+  function drawG(it) {
+    const q = Q[it.id], perm = shuffle([0, 1, 2, 3]);
+    $app.innerHTML = card(it, (q.part || LAWTAB[q.subj]) + '・' + q.ex + '考題', qHead(q)) +
+      `<div class="opts">${perm.map((p, k) => `<button class="opt" data-k="${k}"><span class="L">${L[k]}</span><span>${esc(q.opts[p])}</span></button>`).join('')}</div><div id="ex"></div>`;
+    const bs = [...$app.querySelectorAll('.opt')], ck = perm.indexOf(q.ans);
+    const go = k => {
+      const ok = k >= 0 && accepts(q, perm[k]); choose(bs, ok ? k : ck, k);
+      result(ok, { tts: '答案是' + q.opts[q.ans], label: `${q.ex}${LAWN[q.subj]}　第 ${q.no} 題`, html: `<div class="ans"><q>${L[ck]}　${esc(q.opts[q.ans])}</q></div>` });
+    };
+    bs.forEach(b => b.onclick = () => go(+b.dataset.k));
+    S.say = () => (q.ctx ? q.ctx + '。' : '') + q.q + '。' + perm.map((p, k) => L[k] + '，' + q.opts[p]).join('。');
+    S.reveal = () => go(-1);
+  }
   function drawQ(it) {
+    if (Q[it.id].gen) return drawG(it);
     const q = Q[it.id], perm = shuffle([0, 1, 2, 3]);
     $app.innerHTML = card(it, LAWTAB[lawOfId(it.id)] + (q.ex ? '・' + q.ex + '考題' : ''), `<p class="qtext">${hlText(q.q, true)}</p>`) +
       `<div class="opts">${perm.map((p, k) => `<button class="opt" data-k="${k}"><span class="L">${L[k]}</span><span>${esc(q.opts[p])}</span></button>`).join('')}</div><div id="ex"></div>`;
@@ -767,6 +797,7 @@ function tfBind(card, cb) {
 let FILTER = 'all';
 const inFilter = unit => FILTER === 'all' || lawOf(unit) === FILTER;
 const MODE_ICONS = {
+  fav: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6.5 3.5h11v17l-5.5-4-5.5 4z"/></svg>',
   card: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="6" width="13" height="15" rx="2"/><path d="M8 3h11a2 2 0 0 1 2 2v13"/></svg>',
   cloze: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 8h5M16 8h5M3 15h9"/><rect x="9" y="5" width="6" height="6" rx="1.5"/><rect x="13" y="12" width="8" height="6" rx="1.5"/></svg>',
   quick: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M10 2h4"/></svg>',
@@ -785,15 +816,21 @@ function vModes() {
    <button class="mode" data-m="order">${MODE_ICONS.order}<b>流程排序</b><span>${D.seqs.filter(s => inFilter(s.unit)).length} 組</span></button>
    <button class="mode" data-m="rand">${MODE_ICONS.mock}<b>隨機選擇題</b><span>20 題・共 ${qn} 題</span></button>
    <button class="mode" data-m="wrongbook">${MODE_ICONS.mock.replace('M9 10h6M9 14h6M9 18h3', 'M9.5 11l5 5M14.5 11l-5 5')}<b>錯題本</b><span>${wrongIds().length} 題</span></button>
+   <button class="mode" data-m="favbook">${MODE_ICONS.fav}<b>收藏</b><span>${favIds().length} 題</span></button>
   </div>
-  ${(() => { const g = {}; D.questions.filter(q => q.ex).forEach(q => { const k = q.ex + '|' + (q.id.includes('-ORG-') ? '法院組織法大意' : '民刑訴大意'); (g[k] = g[k] || []).push(q.id); }); const ks = Object.keys(g).sort().reverse(); return ks.length ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>歷屆試題</h2><div class="pastgrid">${ks.map(k => { const [y, t] = k.split('|'); const done = g[k].filter(id => ST.r[id]).length; return `<button class="mode pastbtn" data-past="${k}"><b>${y}</b><span>${t}</span><span class="num">${done}/${g[k].length}</span></button>`; }).join('')}</div></section>` : ''; })()}
+  ${pastHTML()}
   <section style="display:flex;flex-direction:column;gap:10px"><h2>模擬考</h2>
    <button class="mode" data-m="mock1" style="min-height:0"><b>法院組織法大意</b><span>50 題・60 分鐘・每題 2 分</span></button>
    <button class="mode" data-m="mock2" style="min-height:0"><b>民事訴訟法大意與刑事訴訟法大意</b><span>民訴 25＋刑訴 25・60 分鐘</span></button>
    ${ST.mocks.length ? `<div class="list">${ST.mocks.slice(-6).reverse().map(m => `<div class="row"><div><div>${esc(m.t)}</div><div class="r">${esc(m.d)}</div></div><b class="num" style="font-size:20px">${m.s}</b></div>`).join('')}</div>` : ''}
   </section>`;
   $app.querySelectorAll('.chip').forEach(b => b.onclick = () => { FILTER = b.dataset.f; vModes(); });
-  $app.querySelectorAll('.pastbtn').forEach(b => b.onclick = e => { e.stopPropagation(); reset(); const [y, t] = b.dataset.past.split('|'); const ids = D.questions.filter(q => q.ex === y && (t === '法院組織法大意') === q.id.includes('-ORG-')).map(q => q.id).sort(); runItems(ids.map(id => ({ t: 'q', id })), { back: () => goTab('modes') }); });
+  $app.querySelectorAll('.pyear').forEach(b => b.onclick = () => { PASTY = +b.dataset.y; vModes(); });
+  $app.querySelectorAll('[data-pp]').forEach(b => b.onclick = e => {
+    e.stopPropagation(); reset(); const [y, k, how] = b.dataset.pp.split('|'), list = pastList(+y, k), pp = paperOf(+y, k);
+    if (how === 'exam') mockStart(`${y} 年 ${PSUBJ[k]}`, list, { fixed: true, minutes: pp.minutes || 60, key: `${y}-${k}` });
+    else runItems(list.map(q => ({ t: 'q', id: q.id })), { back: () => goTab('modes') });
+  });
   const back = () => goTab('modes');
   $app.querySelectorAll('.mode[data-m]').forEach(b => b.onclick = () => {
     reset(); const m = b.dataset.m;
@@ -803,10 +840,32 @@ function vModes() {
     else if (m === 'match') { const ks = shuffle(Object.keys(D.matches).filter(k => inFilter(k.split('-')[0]))).slice(0, 3); runItems(ks.map(k => ({ t: 'm', id: k })), { back }); }
     else if (m === 'order') runItems(shuffle(D.seqs.filter(s => inFilter(s.unit))).map(s => ({ t: 's', id: s.id })), { back });
     else if (m === 'wrongbook') { goTab('wrong'); return; }
+    else if (m === 'favbook') { goTab('fav'); return; }
     else if (m === 'rand') runItems(shuffle(D.questions.filter(q => inFilter(q.unit))).slice(0, 20).map(q => ({ t: 'q', id: q.id })), { back });
     else if (m === 'mock1') mockStart('法院組織法大意', weighted(D.questions.filter(q => lawOf(q.unit) === 'org'), 50));
     else if (m === 'mock2') mockStart('民事訴訟法大意與刑事訴訟法大意', [...weighted(D.questions.filter(q => lawOf(q.unit) === 'civ'), 25), ...weighted(D.questions.filter(q => lawOf(q.unit) === 'crim'), 25)]);
   });
+}
+/* 考古題：一年一份卷，題目照原卷順序 */
+const pastKey = q => q.gen ? q.subj : q.id.includes('-ORG-') ? 'org' : 'cc';
+const pastYear = q => +String(q.ex || '').replace(/\D/g, '');
+const PASTQ = [...D.questions.filter(q => q.ex), ...GEN];
+const PAST_YEARS = [...new Set(PASTQ.map(pastYear))].filter(Boolean).sort((a, b) => b - a);
+let PASTY = PAST_YEARS[0];
+function qNo(q) { return q.gen && q.no ? q.no : +((q.id.match(/-(\d+)b?$/) || [0, 0])[1]); }
+function pastList(y, k) { return PASTQ.filter(q => pastYear(q) === y && pastKey(q) === k).sort((a, b) => qNo(a) - qNo(b)); }
+function paperOf(y, k) { return (D.papers || []).find(p => p.year === y && p.subj === k) || {}; }
+function pastHTML() {
+  if (!PAST_YEARS.length) return '';
+  const rows = ['org', 'cc', 'chi', 'cie'].map(k => {
+    const list = pastList(PASTY, k); if (!list.length) return '';
+    const pp = paperOf(PASTY, k), done = list.filter(q => ST.r[q.id]).length, best = (ST.past || {})[`${PASTY}-${k}`];
+    return `<div class="prow"><div class="pinfo"><b>${PSUBJ[k]}</b><span class="num">${list.length}${pp.total ? ' / ' + pp.total : ''} 題・${pp.minutes || 60} 分鐘${best != null ? `・最佳 <em>${best}</em>` : ''}</span><i class="pbar"><i style="width:${done / list.length * 100}%"></i></i></div>
+      <div class="pbtns"><button class="btn ghost" data-pp="${PASTY}|${k}|prac">練習</button><button class="btn" data-pp="${PASTY}|${k}|exam">考試</button></div></div>`;
+  }).join('');
+  return `<section style="display:flex;flex-direction:column;gap:10px"><h2>考古題</h2>
+    <div class="pyears">${PAST_YEARS.map(y => `<button class="chip pyear ${y === PASTY ? 'on' : ''}" data-y="${y}">${y}</button>`).join('')}</div>
+    <div class="list plist">${rows}</div></section>`;
 }
 function weighted(pool, n) { return pool.map(q => ({ q, k: Math.pow(Math.random(), 1 / (U[q.unit].pri || 1)) })).sort((a, b) => b.k - a.k).slice(0, n).map(x => x.q); }
 
@@ -844,18 +903,21 @@ function quickTF() {
 }
 
 /* ---------- 模擬考 ---------- */
-function mockStart(title, list) {
+function mockStart(title, list, opt) {
+  opt = opt || {};
   document.body.classList.add('playing');
-  const M = { items: list.map(q => ({ q, perm: shuffle([0, 1, 2, 3]) })), ans: list.map(() => -1), i: 0, end: Date.now() + 3600e3 };
+  const M = { items: list.map(q => ({ q, perm: opt.fixed ? [0, 1, 2, 3] : shuffle([0, 1, 2, 3]) })), ans: list.map(() => -1), i: 0, end: Date.now() + (opt.minutes || 60) * 60e3 };
+  const okAt = (it, a) => a >= 0 && accepts(it.q, it.perm[a]);
+  const noOf = i => opt.fixed ? qNo(M.items[i].q) || i + 1 : i + 1;
   const fmt = ms => { ms = Math.max(0, ms); return String(Math.floor(ms / 60000)).padStart(2, '0') + ':' + String(Math.floor(ms % 60000 / 1000)).padStart(2, '0'); };
   const d = dock('<button class="btn ghost" id="pv">上一題</button><button class="btn" id="sb">交卷</button>');
   const draw = () => {
     window.scrollTo(0, 0);
     const { q, perm } = M.items[M.i];
     $app.innerHTML = `<div class="ph"><button class="icon-btn" id="x" aria-label="放棄">${XICON}</button><span class="timer" id="tm">${fmt(M.end - Date.now())}</span><span class="sp"></span><span class="meta num">${M.ans.filter(a => a >= 0).length} / ${M.items.length}</span></div>
-    <div class="meta num">第 ${M.i + 1} 題</div><p class="qtext">${hlText(q.q, true)}</p>
+    <div class="meta num">第 ${noOf(M.i)} 題</div>${qHead(q)}
     <div class="opts">${perm.map((p, k) => `<button class="opt ${M.ans[M.i] === k ? 'sel' : ''}" data-k="${k}"><span class="L">(${L[k]})</span><span>${esc(q.opts[p])}</span></button>`).join('')}</div>
-    <div class="sheet">${M.items.map((_, i) => `<button class="${M.ans[i] >= 0 ? 'f' : ''} ${i === M.i ? 'cur' : ''}" data-i="${i}">${i + 1}</button>`).join('')}</div><div id="cf"></div>`;
+    <div class="sheet">${M.items.map((_, i) => `<button class="${M.ans[i] >= 0 ? 'f' : ''} ${i === M.i ? 'cur' : ''}" data-i="${i}">${noOf(i)}</button>`).join('')}</div><div id="cf"></div>`;
     document.getElementById('x').onclick = () => confirmBox('放棄這次模擬考？', '放棄', () => goTab('modes'));
     $app.querySelectorAll('.opt').forEach(b => b.onclick = () => { M.ans[M.i] = +b.dataset.k; if (M.i < M.items.length - 1) M.i++; draw(); });
     $app.querySelectorAll('.sheet button').forEach(b => b.onclick = () => { M.i = +b.dataset.i; draw(); });
@@ -867,15 +929,16 @@ function mockStart(title, list) {
   cleanup = () => clearInterval(timer);
   function submit() {
     clearInterval(timer); cleanup = null; d.remove(); let right = 0;
-    M.items.forEach((it, i) => { const ok = M.ans[i] === it.perm.indexOf(it.q.ans); if (ok) right++; mark(it.q.id, ok); });
-    const score = right * 2, dt = new Date();
+    M.items.forEach((it, i) => { const ok = okAt(it, M.ans[i]); if (ok) right++; mark(it.q.id, ok); });
+    const score = Math.round(right / M.items.length * 100), dt = new Date();
+    if (opt.key) { ST.past = ST.past || {}; ST.past[opt.key] = Math.max(ST.past[opt.key] || 0, score); }
     ST.mocks.push({ t: title, s: score, d: `${dt.getMonth() + 1}/${dt.getDate()} ${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}` }); save();
     sWin(); setTab('');
-    const wrong = M.items.map((it, i) => ({ it, i })).filter(({ it, i }) => M.ans[i] !== it.perm.indexOf(it.q.ans));
+    const wrong = M.items.map((it, i) => ({ it, i })).filter(({ it, i }) => !okAt(it, M.ans[i]));
     $app.innerHTML = `<div class="end"><div class="score">${score}</div><div class="meta">${esc(title)}・答對 ${right} / ${M.items.length}</div></div>
-    <div class="sheet">${M.items.map((it, i) => `<button class="${M.ans[i] === it.perm.indexOf(it.q.ans) ? 'o' : 'x'}" data-i="${i}">${i + 1}</button>`).join('')}</div>
+    <div class="sheet">${M.items.map((it, i) => `<button class="${okAt(it, M.ans[i]) ? 'o' : 'x'}" data-i="${i}">${noOf(i)}</button>`).join('')}</div>
     <div class="btns"><button class="btn" id="bk">學法</button></div>
-    ${wrong.length ? `<section style="display:flex;flex-direction:column;gap:14px"><h2>答錯 ${wrong.length}</h2>${wrong.map(({ it, i }) => { const c = it.perm.indexOf(it.q.ans), a = M.ans[i]; return `<div id="w${i}" style="display:flex;flex-direction:column;gap:6px"><div class="meta">第 ${i + 1} 題</div><div style="font-weight:700">${esc(it.q.q)}</div><div style="color:var(--ok);font-weight:700">(${L[c]}) ${esc(it.q.opts[it.q.ans])}</div>${a >= 0 ? `<div style="color:var(--verm);text-decoration:line-through">(${L[a]}) ${esc(it.q.opts[it.perm[a]])}</div>` : '<div class="muted">未作答</div>'}${srcHTML(it.q.law, it.q.no, it.q.quote)}</div>`; }).join('')}</section>` : ''}`;
+    ${wrong.length ? `<section style="display:flex;flex-direction:column;gap:14px"><h2>答錯 ${wrong.length}</h2>${wrong.map(({ it, i }) => { const c = it.perm.indexOf(it.q.ans), a = M.ans[i]; return `<div id="w${i}" style="display:flex;flex-direction:column;gap:6px"><div class="meta">第 ${noOf(i)} 題</div>${it.q.ctx ? `<div class="qctx">${esc(it.q.ctx)}</div>` : ''}<div style="font-weight:700">${esc(it.q.q)}</div><div style="color:var(--ok);font-weight:700">(${L[c]}) ${esc(it.q.opts[it.q.ans])}</div>${a >= 0 ? `<div style="color:var(--verm);text-decoration:line-through">(${L[a]}) ${esc(it.q.opts[it.perm[a]])}</div>` : '<div class="muted">未作答</div>'}${it.q.gen ? '' : srcHTML(it.q.law, it.q.no, it.q.quote)}</div>`; }).join('')}</section>` : ''}`;
     bindSrc($app);
     document.getElementById('bk').onclick = () => goTab('modes');
     $app.querySelectorAll('.sheet button.x').forEach(b => b.onclick = () => { const e = document.getElementById('w' + b.dataset.i); e && e.scrollIntoView({ behavior: 'smooth' }); });
@@ -883,15 +946,37 @@ function mockStart(title, list) {
   draw();
 }
 
+/* ========== 收藏 ========== */
+function favIds() { return Object.keys(ST.fav).filter(id => Q[id] || Z[id] || O[id] || T[id] || SQ[id] || (D.matches && D.matches[id])).sort((a, b) => ST.fav[b] - ST.fav[a]); }
+function favInfo(id) {
+  if (Q[id]) { const q = Q[id]; return { k: q.gen ? q.subj : lawOf(q.unit), s: q.q, r: q.gen ? `${q.ex}考題　第 ${q.no} 題` : `${q.law} ${q.no}` }; }
+  if (Z[id]) { const z = Z[id]; return { k: lawOf(z.unit), s: z.pre + '＿＿' + z.post, r: `${z.law} ${z.no}` }; }
+  if (T[id]) { const t = T[id]; return { k: lawOf(t.unit), s: t.s, r: `${t.law} ${t.no}` }; }
+  if (O[id]) { const o = O[id]; return { k: lawOf(o.unit), s: o.quote, r: `${o.law} ${o.no}` }; }
+  if (SQ[id]) { const q = SQ[id]; return { k: lawOf(q.unit), s: q.title, r: q.law }; }
+  const m = D.matches[id]; return { k: lawOf(id.split('-')[0]), s: m.map(x => x.a).join('、'), r: '配對' };
+}
+function vFav() {
+  const ids = favIds();
+  if (!ids.length) { $app.innerHTML = `<h1>收藏</h1><div class="empty">${MODE_ICONS.fav}</div>`; return; }
+  const by = {}; ids.forEach(id => { const x = favInfo(id); x.id = id; (by[x.k] = by[x.k] || []).push(x); });
+  $app.innerHTML = `<h1>收藏 <span class="muted num" style="font-size:18px">${ids.length}</span></h1><div class="btns"><button class="btn" id="all">全部重刷</button></div>
+  ${['org', 'civ', 'crim', 'chi', 'cie'].filter(k => by[k]).map(k => `<section style="display:flex;flex-direction:column;gap:8px"><h2>${LAWN[k]} <span class="muted num" style="font-size:15px">${by[k].length}</span></h2><div class="list">${by[k].map(x => `<div class="row favrow"><button class="favgo" data-id="${esc(x.id)}"><span style="font-size:15px">${esc(x.s)}</span><span class="r">${esc(x.r)}</span></button><button class="qfav on" data-un="${esc(x.id)}" aria-label="取消收藏">${BOOKMARK}</button></div>`).join('')}</div></section>`).join('')}`;
+  const back = () => goTab('fav');
+  document.getElementById('all').onclick = () => runItems(ids.map(id => ({ t: typeOf(id), id })), { back });
+  $app.querySelectorAll('.favgo').forEach(b => b.onclick = () => runItems([{ t: typeOf(b.dataset.id), id: b.dataset.id }], { back }));
+  $app.querySelectorAll('[data-un]').forEach(b => b.onclick = () => { delete ST.fav[b.dataset.un]; save(); vFav(); });
+}
+
 /* ========== 錯題 ========== */
 function wrongIds() { return Object.keys(ST.r).filter(id => (Q[id] || Z[id]) && isWrong(id)); }
 function vWrong() {
   const ids = wrongIds();
   if (!ids.length) { $app.innerHTML = `<h1>錯題</h1><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5z"/><path d="M9 13l2 2 4-4"/></svg><p class="muted">答錯的題目會收在這裡，連續答對兩次才會移出。</p></div>`; return; }
-  const items = ids.map(id => Q[id] ? { t: 'q', id, u: Q[id].unit, s: Q[id].q, law: Q[id].law, no: Q[id].no } : { t: 'z', id, u: Z[id].unit, s: Z[id].pre + '＿＿' + Z[id].post, law: Z[id].law, no: Z[id].no });
-  const by = {}; items.forEach(x => (by[lawOf(x.u)] = by[lawOf(x.u)] || []).push(x));
+  const items = ids.map(id => Q[id] ? (Q[id].gen ? { t: 'q', id, k: Q[id].subj, s: Q[id].q, law: Q[id].ex + '考題', no: '第 ' + Q[id].no + ' 題' } : { t: 'q', id, k: lawOf(Q[id].unit), s: Q[id].q, law: Q[id].law, no: Q[id].no }) : { t: 'z', id, k: lawOf(Z[id].unit), s: Z[id].pre + '＿＿' + Z[id].post, law: Z[id].law, no: Z[id].no });
+  const by = {}; items.forEach(x => (by[x.k] = by[x.k] || []).push(x));
   $app.innerHTML = `<h1>錯題 <span class="muted num" style="font-size:18px">${ids.length}</span></h1><div class="btns"><button class="btn" id="all">全部重刷</button></div>
-  ${['org', 'civ', 'crim'].filter(k => by[k]).map(k => `<section style="display:flex;flex-direction:column;gap:8px"><h2>${LAWN[k]} <span class="muted num" style="font-size:15px">${by[k].length}</span></h2><div class="list">${by[k].map(x => `<div class="row"><div><div style="font-size:15px">${esc(x.s)}</div><div class="r">${esc(x.law)} ${esc(x.no)}</div></div><span class="r num">✕${ST.r[x.id][1]}</span></div>`).join('')}</div><button class="btn ghost wide" data-k="${k}">只刷${LAWN[k]}</button></section>`).join('')}`;
+  ${['org', 'civ', 'crim', 'chi', 'cie'].filter(k => by[k]).map(k => `<section style="display:flex;flex-direction:column;gap:8px"><h2>${LAWN[k]} <span class="muted num" style="font-size:15px">${by[k].length}</span></h2><div class="list">${by[k].map(x => `<div class="row"><div><div style="font-size:15px">${esc(x.s)}</div><div class="r">${esc(x.law)} ${esc(x.no)}</div></div><span class="r num">✕${ST.r[x.id][1]}</span></div>`).join('')}</div><button class="btn ghost wide" data-k="${k}">只刷${LAWN[k]}</button></section>`).join('')}`;
   const back = () => goTab('wrong');
   document.getElementById('all').onclick = () => runItems(shuffle(items), { back });
   $app.querySelectorAll('[data-k]').forEach(b => b.onclick = () => runItems(shuffle(by[b.dataset.k]), { back }));
