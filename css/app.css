@@ -569,3 +569,13 @@ button,a,input,label,.opt,.pc,.mi,.tfcard{touch-action:manipulation;-webkit-user
 .qfoot .side.nextbtn svg{width:20px;height:20px}
 .qfoot .side.nextbtn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--indigo-d)}
 .orb .orbgo{display:none}
+
+/* v8：進度數字靠右、滑動回顧、提示 */
+.qtrack{height:18px;border-radius:9px}
+.qtrack em{left:auto;right:10px;top:0;line-height:18px;font-size:11px;color:var(--muted)}
+.qflame b{font-size:15px}
+.static *,.static *::before,.static *::after{animation:none!important}
+.toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:70;background:var(--ink);color:var(--paper);padding:10px 20px;border-radius:999px;font-weight:700;font-size:15px;animation:toastin .2s ease-out;transition:opacity .35s}
+.toast.out{opacity:0}
+@keyframes toastin{from{transform:translate(-50%,10px);opacity:0}}
+.qtrack em{right:26px}
