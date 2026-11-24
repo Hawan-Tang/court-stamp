@@ -638,3 +638,10 @@ body.playing .qslide{will-change:transform;touch-action:pan-y}
 .opt.dim:has(.why) .why{opacity:1}
 .end ~ section .why,section .why{display:block;font-size:14px;font-weight:500;margin-top:2px}
 .qctx mark.blankno{background:var(--indigo);color:#fff;border-radius:6px;padding:0 6px;font-weight:900}
+/* v21：底部「條文｜白話｜下一題」，下一題縮小 */
+.qfoot .fbtn.primary{flex:1}
+.fbtn.ghost.pl{flex:0 0 auto;color:var(--ink)}
+.fbtn.ghost.on{background:var(--indigo-soft);color:var(--indigo)}
+.plainbox p{margin:0 0 8px;line-height:1.8}
+.plainbox p:last-child{margin-bottom:0}
+.qfoot .fbtn,.qfoot .fbtn.ghost.art,.qfoot .fbtn.ghost.pl,.qfoot .fbtn.primary{flex:1 1 0;min-width:0;padding:0 10px}
