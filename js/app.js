@@ -438,7 +438,7 @@ function vMap() {
     const dn = ls.filter(l => ST.lv[l.id]).length;
     h += `<section class="book"><header><span class="k">${k}</span><h2>${t}</h2><span class="c">${dn}/${ls.length}</span></header><div class="slots">` +
       ls.map(l => {
-        const i = LVI[l.id], rec = ST.lv[l.id], st = rec ? 'done' : (i === ci ? 'cur' : (unlocked(i) ? 'open' : 'lock'));
+        const i = LVI[l.id], rec = ST.lv[l.id], st = rec ? 'done' : (i === ci ? 'cur' : 'open');   // 全部關卡都開放，不上鎖
         const inner = rec ? stampSVG(l.stamp, l.id) : (st === 'cur' || st === 'open' ? `<b>${esc(l.stamp)}</b>` : '');
         return `<button class="slot ${st}" data-l="${l.id}" ${st === 'lock' ? 'disabled aria-disabled="true"' : ''} aria-label="${esc(U[l.unit].title)} ${l.n}"><span class="ring">${inner}</span>${starsHTML(rec ? rec.s : 0)}<span class="lbl">${esc(U[l.unit].title)}${l.of > 1 ? ' ' + l.n : ''}</span></button>`;
       }).join('') + `</div></section>`;
@@ -922,10 +922,10 @@ function mockStart(title, list, opt) {
     $app.innerHTML = `<div class="ph"><button class="icon-btn" id="x" aria-label="放棄">${XICON}</button><span class="timer" id="tm">${fmt(M.end - Date.now())}</span><span class="sp"></span><span class="meta num">${M.ans.filter(a => a >= 0).length} / ${M.items.length}</span></div>
     <div class="meta num">第 ${noOf(M.i)} 題</div>${qHead(q)}
     <div class="opts">${perm.map((p, k) => `<button class="opt ${M.ans[M.i] === k ? 'sel' : ''}" data-k="${k}"><span class="L">(${L[k]})</span><span>${esc(q.opts[p])}</span></button>`).join('')}</div>
-    <div class="sheet">${M.items.map((_, i) => `<button class="${M.ans[i] >= 0 ? 'f' : ''} ${i === M.i ? 'cur' : ''}" data-i="${i}">${noOf(i)}</button>`).join('')}</div><div id="cf"></div>`;
+    <div class="ansheet">${M.items.map((_, i) => `<button class="${M.ans[i] >= 0 ? 'f' : ''} ${i === M.i ? 'cur' : ''}" data-i="${i}">${noOf(i)}</button>`).join('')}</div><div id="cf"></div>`;
     document.getElementById('x').onclick = () => confirmBox('放棄這次模擬考？', '放棄', () => goTab('modes'));
     $app.querySelectorAll('.opt').forEach(b => b.onclick = () => { M.ans[M.i] = +b.dataset.k; if (M.i < M.items.length - 1) M.i++; draw(); });
-    $app.querySelectorAll('.sheet button').forEach(b => b.onclick = () => { M.i = +b.dataset.i; draw(); });
+    $app.querySelectorAll('.ansheet button').forEach(b => b.onclick = () => { M.i = +b.dataset.i; draw(); });
   };
   const confirmBox = (msg, yes, fn) => { const cf = document.getElementById('cf'); cf.innerHTML = `<div class="src" style="border-color:var(--verm)"><p style="margin:0">${esc(msg)}</p><div class="btns"><button class="btn" id="y">${yes}</button><button class="btn ghost" id="n">繼續作答</button></div></div>`; document.getElementById('y').onclick = fn; document.getElementById('n').onclick = () => cf.innerHTML = ''; cf.scrollIntoView({ behavior: 'smooth' }); };
   document.getElementById('pv').onclick = () => { if (M.i > 0) { M.i--; draw(); } };
@@ -941,12 +941,12 @@ function mockStart(title, list, opt) {
     sWin(); setTab('');
     const wrong = M.items.map((it, i) => ({ it, i })).filter(({ it, i }) => !okAt(it, M.ans[i]));
     $app.innerHTML = `<div class="end"><div class="score">${score}</div><div class="meta">${esc(title)}・答對 ${right} / ${M.items.length}</div></div>
-    <div class="sheet">${M.items.map((it, i) => `<button class="${okAt(it, M.ans[i]) ? 'o' : 'x'}" data-i="${i}">${noOf(i)}</button>`).join('')}</div>
+    <div class="ansheet">${M.items.map((it, i) => `<button class="${okAt(it, M.ans[i]) ? 'o' : 'x'}" data-i="${i}">${noOf(i)}</button>`).join('')}</div>
     <div class="btns"><button class="btn" id="bk">學法</button></div>
     ${wrong.length ? `<section style="display:flex;flex-direction:column;gap:14px"><h2>答錯 ${wrong.length}</h2>${wrong.map(({ it, i }) => { const c = it.perm.indexOf(it.q.ans), a = M.ans[i]; return `<div id="w${i}" style="display:flex;flex-direction:column;gap:6px"><div class="meta">第 ${noOf(i)} 題</div>${ctxHTML(it.q)}<div style="font-weight:700">${esc(it.q.q || '第 ' + it.q.no + ' 格')}</div><div style="color:var(--ok);font-weight:700">(${L[c]}) ${esc(it.q.opts[it.q.ans])}${whyText(it.q.id, it.q.ans) ? `<small class="why">${esc(whyText(it.q.id, it.q.ans))}</small>` : ''}</div>${a >= 0 ? `<div style="color:var(--verm)"><s>(${L[a]}) ${esc(it.q.opts[it.perm[a]])}</s>${whyText(it.q.id, it.perm[a]) ? `<small class="why">${esc(whyText(it.q.id, it.perm[a]))}</small>` : ''}</div>` : '<div class="muted">未作答</div>'}${it.q.gen ? '' : srcHTML(it.q.law, it.q.no, it.q.quote)}</div>`; }).join('')}</section>` : ''}`;
     bindSrc($app);
     document.getElementById('bk').onclick = () => goTab('modes');
-    $app.querySelectorAll('.sheet button.x').forEach(b => b.onclick = () => { const e = document.getElementById('w' + b.dataset.i); e && e.scrollIntoView({ behavior: 'smooth' }); });
+    $app.querySelectorAll('.ansheet button.x').forEach(b => b.onclick = () => { const e = document.getElementById('w' + b.dataset.i); e && e.scrollIntoView({ behavior: 'smooth' }); });
   }
   draw();
 }
