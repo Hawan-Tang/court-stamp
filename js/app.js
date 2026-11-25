@@ -25,7 +25,7 @@ const O = {}; (D.order || []).forEach(o => O[o.id] = o);
 function load() { try { const v = JSON.parse(localStorage.getItem(KEY)); if (v && v.r) return v; } catch (e) {} return { r: {}, lv: {}, mute: false, mocks: [], quick: 0 }; }
 const ST = load(); ST.lv = ST.lv || {}; ST.mocks = ST.mocks || [];
 ST.set = Object.assign({ sound: ST.mute ? false : true, vol: 0.6, vib: true, anim: true, hl: ST.hl === false ? false : true, notes: true, tts: false, ttsRate: 1 }, ST.set || {});
-ST.fav = ST.fav || {}; ST.mode = ST.mode || 'all'; ST.goal = ST.goal || 30; ST.gifts = ST.gifts || {};
+ST.fav = ST.fav || {}; ST.plan = ST.plan || { org: 20, civ: 20, crim: 20, chi: 10, cie: 10 }; ST.exam = ST.exam || ''; ST.mode = ST.mode || 'all'; ST.goal = ST.goal || 30; ST.gifts = ST.gifts || {};
 ST.srs = ST.srs || {}; ST.days = ST.days || {}; ST.coins = ST.coins || 0; ST.owned = ST.owned || ['turtle']; ST.chr = ST.chr || 'turtle';
 let GOAL = ST.goal;
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -48,6 +48,7 @@ function save() { try { localStorage.setItem(KEY, JSON.stringify(ST)); } catch (
 function mark(id, ok) {
   const r = ST.r[id] || [0, 0, 0, 0]; if (ok) { r[0]++; r[2] = 1; r[3]++; } else { r[1]++; r[2] = 0; r[3] = 0; } ST.r[id] = r;
   if (SRS_T[typeOf(id)]) srsUpdate(id, ok);
+  if (Q[id]) { const d = dayRec(); d.did = d.did || {}; const k = lawOfId(id); d.did[k] = (d.did[k] || 0) + 1; }
   if (ok) { const d = dayRec(); d.right++; ST.coins++; d.law = d.law || {}; const lw = lawOfId(id); d.law[lw] = (d.law[lw] || 0) + 1; if (d.right >= GOAL && !d.goal) { d.goal = 1; ST.coins += 20; goalJustHit = true; } }
   save();
 }
@@ -271,6 +272,7 @@ function openSettings() {
   const sw = (k, label, sub) => `<label class="srow"><span><b>${label}</b>${sub ? `<small>${sub}</small>` : ''}</span><input type="checkbox" class="sw" data-k="${k}" ${ST.set[k] ? 'checked' : ''}></label>`;
   const el = document.createElement('div'); el.id = 'sheet'; el.className = 'sheet-wrap';
   el.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="設定"><div class="grab"></div><div class="shead"><span></span><h2>設定</h2><button class="sdone" id="sclose">完成</button></div>
+    <div class="sgroup"><div class="srow sh"><span><b>每日範圍</b><small>每科每天要做的選擇題數</small></span></div>${PLAN_K.map(([k, t]) => `<div class="srow"><span><b>${t}</b></span><div class="stepper" data-pk="${k}"><button data-d="-5" aria-label="減少">−</button><b class="num">${ST.plan[k] || 0}</b><button data-d="5" aria-label="增加">+</button></div></div>`).join('')}<label class="srow"><span><b>考試日期</b></span><input type="date" id="examDate" class="ssel" value="${esc(ST.exam || '')}"></label></div>
     <div class="sgroup"><div class="srow"><span><b>外觀</b></span><div class="seg3" id="themeSeg">${[['auto', '跟隨系統'], ['light', '淺色'], ['dark', '深色']].map(([k, t]) => `<button class="${(ST.set.theme || 'auto') === k ? 'on' : ''}" data-t="${k}">${t}</button>`).join('')}</div></div></div>
     <div class="sgroup">${sw('sound', '音效')}<label class="srow vol ${ST.set.sound ? '' : 'off'}"><span><b>音量</b></span><input type="range" id="vol" min="0" max="1" step="0.05" value="${ST.set.vol}"></label>${sw('vib', '震動', '答錯時手機震一下')}${sw('anim', '動畫', '角色動作、紙花、滑入效果')}</div>
     <div class="sgroup">${sw('hl', '螢光筆標色', '數字、主體、例外字上色')}${sw('notes', '註釋', '專有名詞可以點開解釋')}</div>
@@ -282,6 +284,8 @@ function openSettings() {
   el.addEventListener('click', e => { if (e.target === el) close(); });
   document.getElementById('sclose').onclick = close;
   document.getElementById('sver').onclick = e => { e.currentTarget.classList.add('spin'); forceUpdate(); };
+  el.querySelectorAll('.stepper').forEach(sp => sp.querySelectorAll('button').forEach(b => b.onclick = () => { const k = sp.dataset.pk; ST.plan[k] = Math.max(0, Math.min(200, (ST.plan[k] || 0) + +b.dataset.d)); sp.querySelector('b').textContent = ST.plan[k]; save(); }));
+  const ed = document.getElementById('examDate'); if (ed) ed.onchange = () => { ST.exam = ed.value; save(); };
   el.querySelectorAll('#themeSeg button').forEach(b => b.onclick = () => { ST.set.theme = b.dataset.t; save(); applyTheme(); el.querySelectorAll('#themeSeg button').forEach(x => x.classList.toggle('on', x === b)); });
   el.querySelectorAll('.sw').forEach(c => c.onchange = () => { ST.set[c.dataset.k] = c.checked; save(); applyAnim(); el.querySelector('.vol').classList.toggle('off', !ST.set.sound); if (c.dataset.k === 'sound' && c.checked) sOk(); });
     const tr = document.getElementById('ttsRate'); if (tr) { tr.oninput = () => { ST.set.ttsRate = +tr.value; save(); }; tr.onchange = () => speak('每日目標三十題'); }
@@ -341,6 +345,28 @@ function sessionPool(mode) {
 }
 function poolProgress(mode) { const p = sessionPool(mode); return [p.filter(x => ST.r[x.id]).length, p.length]; }
 function buildSession() { return sessionPool(ST.mode).filter(x => !ST.r[x.id]).slice(0, ROUND); }
+const PLAN_K = [['org', '法院組織法'], ['civ', '民事訴訟法'], ['crim', '刑事訴訟法'], ['chi', '國文'], ['cie', '公民與英文']];
+/* 今日範圍：從某科開始做，題數 n；新題不夠就補錯題、再補做過的題 */
+function startPlan(k, n) {
+  const pool = sessionPool(k), fresh = pool.filter(x => !ST.r[x.id]);
+  let items = fresh.slice(0, n);
+  if (items.length < n) items = items.concat(shuffle(pool.filter(x => ST.r[x.id] && isWrong(x.id))).slice(0, n - items.length));
+  if (items.length < n) items = items.concat(shuffle(pool.filter(x => ST.r[x.id] && !items.some(y => y.id === x.id))).slice(0, n - items.length));
+  if (!items.length) return;
+  ST.mode = k; save(); reset(); goalJustHit = false; runItems(items, { session: true, back: () => goTab('home') });
+}
+function planHTML() {
+  const d = (ST.days[today()] || {}).did || {};
+  const rows = PLAN_K.filter(([k]) => (ST.plan[k] || 0) > 0 && (k === 'chi' || k === 'cie' ? GEN.some(q => q.subj === k) : true)).map(([k, t]) => {
+    const n = ST.plan[k], got = Math.min(d[k] || 0, n), ok = got >= n;
+    return `<button class="planrow ${ok ? 'done' : ''}" data-pk="${k}" style="--pc:var(--c-${k})"><span class="pdot"></span><b>${t}</b><span class="pnum num">${got} / ${n}</span><i class="pbar"><i style="width:${got / n * 100}%"></i></i><span class="pchk">${ok ? '<svg viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}</span></button>`;
+  });
+  if (!rows.length) return '';
+  const all = PLAN_K.filter(([k]) => (ST.plan[k] || 0) > 0).every(([k]) => (d[k] || 0) >= ST.plan[k]);
+  let dd = '';
+  if (ST.exam) { const left = Math.ceil((new Date(ST.exam + 'T00:00:00') - new Date(today() + 'T00:00:00')) / 864e5); if (left >= 0) dd = `<span class="dday num">D-${left}</span>`; }
+  return `<section class="plancard ${all ? 'alldone' : ''}"><header><h2>今日範圍</h2>${dd}${all ? `<span class="planstamp">${stampSVG('讀', today(), 'pstamp')}</span>` : ''}</header><div class="planlist">${rows.join('')}</div></section>`;
+}
 function startSession() { const items = buildSession(); if (!items.length) { goTab('wrong'); return; } reset(); goalJustHit = false; runItems(items, { session: true, back: () => goTab('home') }); }
 const COIN = '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="var(--verm)" stroke-width="2.6"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="var(--verm)" stroke-width="1.4"/></svg>';
 const FLAME = '<svg class="ic" viewBox="0 0 24 24"><path d="M12 2c1 4 5 5.5 5 11a5 5 0 0 1-10 0c0-2.5 1.2-4 2.2-5 .3 1.7 1 2.6 2 3-.6-3.4.4-6.5.8-9z" fill="#F08A24"/><path d="M12 13c.6 1.5 2.4 2 2.4 4a2.4 2.4 0 0 1-4.8 0c0-1.3.9-2.3 2.4-4z" fill="#FFD23F"/></svg>';
@@ -375,6 +401,7 @@ function vHome() {
       <div class="week">${wk.map((k, i) => { const on = (ST.days[k] || {}).rounds; const isT = k === tk; if (i === 6 && !on) return `<span class="wd gift ${isT ? 'today' : ''}">${GIFT}</span>`; return `<span class="wd ${on ? 'on' : ''} ${isT ? 'today' : ''}">${on ? stampSVG('讀', k, 'wstamp') : '一二三四五六日'[i]}</span>`; }).join('')}</div>
     </div>
   </section>
+  ${planHTML()}
   <section class="maincard" style="--mc:${m.c}">
     <div class="mtabs">${MODES.map(x => `<button class="mtab ${x.k === ST.mode ? 'on' : ''}" data-m="${x.k}" style="--tc:${x.c}">${x.tab}</button>`).join('')}<button class="mtab gear" id="mset" aria-label="設定">${GEAR}</button></div>
     <div class="mc-in">
@@ -390,6 +417,7 @@ function vHome() {
   </section>`;
   if (wkDone && !ST.gifts[wk[0]]) { ST.gifts[wk[0]] = 1; ST.coins += 50; save(); setTimeout(() => { sCoin(); confetti(document.querySelector('.week'), 24); }, 300); }
   document.getElementById('st').onclick = startSession;
+  $app.querySelectorAll('.planrow').forEach(b => b.onclick = () => { const k = b.dataset.pk, d = (ST.days[today()] || {}).did || {}; const left = (ST.plan[k] || 0) - (d[k] || 0); startPlan(k, left > 0 ? Math.min(left, 30) : ROUND); });
   $app.querySelectorAll('.mtab[data-m]').forEach(b => b.onclick = () => { ST.mode = b.dataset.m; save(); vHome(); });
   document.getElementById('mset').onclick = openSettings;
   const hc = document.getElementById('hc');
