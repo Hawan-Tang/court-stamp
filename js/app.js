@@ -338,11 +338,22 @@ function confetti(el, n) {
 /* ========== 今日學習 ========== */
 const ROUND = 15;
 /* 開始學習：只出沒做過的新題，不混複習（複習去錯題本、收藏） */
+/* 固定的打散順序：每題依 id 算一個雜湊值排序，各年份、各題型平均混在一起，重開也不變 */
+function mixKey(id) { let h = 2166136261; for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619); } h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995); return (h ^ (h >>> 15)) >>> 0; }
+const mixSort = arr => arr.map(x => [mixKey(x.id), x]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
 function sessionPool(mode) {
-  if (mode === 'chi' || mode === 'cie') return GEN.filter(q => q.subj === mode).sort((a, b) => a.id < b.id ? 1 : -1).map(q => ({ t: 'q', id: q.id }));
+  if (mode === 'chi' || mode === 'cie') {
+    /* 分成「閱讀長文／短題」（公英分「公民／英文」）兩堆，依比例交錯排，避免同類題擠在一起 */
+    const kind = q => mode === 'cie' ? q.part === '英文' : !!q.ctx || (q.q[0] === '「' && q.q.length > 60);
+    const bins = [[], []];
+    GEN.filter(q => q.subj === mode).forEach(q => bins[kind(q) ? 1 : 0].push({ t: 'q', id: q.id }));
+    const [A, B] = bins.map(mixSort), out = []; let i = 0, j = 0;
+    while (i < A.length || j < B.length) out.push(j >= B.length || (i < A.length && (i + 1) / A.length <= (j + 1) / B.length) ? A[i++] : B[j++]);
+    return out;
+  }
   const out = [], seen = new Set();
   for (const lv of LV) { if (mode !== 'all' && lawOf(lv.unit) !== mode) continue; for (const [t, id] of lv.items) if (t === 'q' && !seen.has(id)) { seen.add(id); out.push({ t, id }); } }
-  return out;
+  return mixSort(out);
 }
 function poolProgress(mode) { const p = sessionPool(mode); return [p.filter(x => ST.r[x.id]).length, p.length]; }
 function buildSession() { return sessionPool(ST.mode).filter(x => !ST.r[x.id]).slice(0, ROUND); }
