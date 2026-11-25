@@ -275,12 +275,13 @@ function openSettings() {
     <div class="sgroup">${sw('sound', '音效')}<label class="srow vol ${ST.set.sound ? '' : 'off'}"><span><b>音量</b></span><input type="range" id="vol" min="0" max="1" step="0.05" value="${ST.set.vol}"></label>${sw('vib', '震動', '答錯時手機震一下')}${sw('anim', '動畫', '角色動作、紙花、滑入效果')}</div>
     <div class="sgroup">${sw('hl', '螢光筆標色', '數字、主體、例外字上色')}${sw('notes', '註釋', '專有名詞可以點開解釋')}</div>
     ${TTS_OK ? `<div class="sgroup">${sw('tts', '自動朗讀', '題目出現時念題目，答完念條文')}<label class="srow"><span><b>語速</b></span><input type="range" id="ttsRate" min="0.6" max="1.6" step="0.1" value="${ST.set.ttsRate || 1}"></label>${zhVoices.length ? `<label class="srow"><span><b>聲音</b></span><select id="ttsVoice" class="ssel"><option value="">自動${ttsVoice && !ST.set.voice ? `（${esc(ttsVoice.name)}）` : ''}</option>${zhVoices.map(v => `<option value="${esc(v.name)}" ${ST.set.voice === v.name ? 'selected' : ''}>${esc(v.name)}　${esc(v.lang)}</option>`).join('')}</select></label>` : ''}</div>` : ''}
-    <div class="sver num">v${esc(window.APP_V || '')}</div>
+    <button class="sver num" id="sver">v${esc(window.APP_V || '')}</button>
     </div>`;
   document.body.appendChild(el);
   const close = () => { el.classList.add('out'); setTimeout(() => el.remove(), 200); if (!document.body.classList.contains('playing')) route(); };
   el.addEventListener('click', e => { if (e.target === el) close(); });
   document.getElementById('sclose').onclick = close;
+  document.getElementById('sver').onclick = e => { e.currentTarget.classList.add('spin'); forceUpdate(); };
   el.querySelectorAll('#themeSeg button').forEach(b => b.onclick = () => { ST.set.theme = b.dataset.t; save(); applyTheme(); el.querySelectorAll('#themeSeg button').forEach(x => x.classList.toggle('on', x === b)); });
   el.querySelectorAll('.sw').forEach(c => c.onchange = () => { ST.set[c.dataset.k] = c.checked; save(); applyAnim(); el.querySelector('.vol').classList.toggle('off', !ST.set.sound); if (c.dataset.k === 'sound' && c.checked) sOk(); });
     const tr = document.getElementById('ttsRate'); if (tr) { tr.oninput = () => { ST.set.ttsRate = +tr.value; save(); }; tr.onchange = () => speak('每日目標三十題'); }
@@ -1054,5 +1055,23 @@ function vLaws() {
 }
 
 route();
+/* 更新：清掉離線快取和舊的 service worker，再重新載入 */
+async function forceUpdate() {
+  try { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); } catch (e) {}
+  try { const rs = await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r => r.unregister())); } catch (e) {}
+  location.reload();
+}
+/* 打開時直接問伺服器最新版本號（iPhone 主畫面 App 不一定收得到背景更新通知） */
+(async () => {
+  try {
+    if (!/^https?:/.test(location.protocol) || !window.APP_V) return;
+    const t = await (await fetch('index.html?check=' + Date.now(), { cache: 'no-store' })).text();
+    const m = t.match(/var V = '(\d+)'/);
+    if (m && +m[1] > +window.APP_V && !document.body.classList.contains('playing')) {
+      let tried = null; try { tried = sessionStorage.getItem('tws-upd'); sessionStorage.setItem('tws-upd', m[1]); } catch (e) {}
+      if (tried !== m[1]) forceUpdate();   // 同一個版本只強制更新一次，避免無限重新整理
+    }
+  } catch (e) {}
+})();
 try { if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) { const had = !!navigator.serviceWorker.controller; let done = false; navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && !done) { done = true; location.reload(); } }); navigator.serviceWorker.register('sw.js').then(r => r.update()).catch(() => {}); } } catch (e) {}
 })();
