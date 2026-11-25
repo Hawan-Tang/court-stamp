@@ -560,7 +560,9 @@ function bindFav(id) {
   paint();
   b.onclick = () => { if (ST.fav[id]) delete ST.fav[id]; else { ST.fav[id] = Date.now(); pluck(880, 0, .14, .3); pluck(1320, .06, .1, .4); } save(); paint(); b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); };
 }
-const WHY = window.WHY || {}, ZH = window.ZH || {};
+const WHY = window.WHY || {}, ZH = window.ZH || {}, NOTE = window.NOTE || {};
+/* 國文、公民、英文：整題觀念解說，沒有的話照舊顯示正確答案 */
+const noteHTML = (id, fb) => NOTE[id] ? `<div class="ans gnote"><p>${esc(NOTE[id])}</p></div>` : fb;
 /* 英文題答完後：題目、文章、選項的中文 */
 function addZh(bs, q, perm) {
   const z = ZH[q.id]; if (!z) return;
@@ -769,7 +771,7 @@ function runItems(items, opt) {
       bs.forEach((b, k) => { b.disabled = true; b.classList.remove('sel'); const right = q.ans.includes(perm[k]); if (right) { b.classList.add('right'); markO(b); if (!pick.has(k)) b.classList.add('miss'); } else if (pick.has(k)) { b.classList.add('wrong'); markX(b); } else b.classList.add('dim'); });
       addZh(bs, q, perm); addWhy(bs, q.id, perm);
       const letters = perm.map((p, k) => q.ans.includes(p) ? L[k] : '').join('');
-      result(ok, { tts: '答案是' + letters.split('').join('、'), label: `${q.ex}${LAWN[q.subj]}　第 ${q.no} 題`, html: `<div class="ans"><q>正確答案　${letters}</q></div>` });
+      result(ok, { tts: '答案是' + letters.split('').join('、'), label: `${q.ex}${LAWN[q.subj]}　第 ${q.no} 題`, html: noteHTML(q.id, `<div class="ans"><q>正確答案　${letters}</q></div>`) });
     };
     S.say = () => (q.ctx ? q.ctx + '。' : '') + q.q + '。複選題。' + perm.map((p, k) => L[k] + '，' + q.opts[p]).join('。');
   }
@@ -781,7 +783,7 @@ function runItems(items, opt) {
     const bs = [...$app.querySelectorAll('.opt')], ck = perm.indexOf(q.ans);
     const go = k => {
       const ok = k >= 0 && accepts(q, perm[k]); choose(bs, ok ? k : ck, k); addZh(bs, q, perm); addWhy(bs, q.id, perm);
-      result(ok, { tts: '答案是' + q.opts[q.ans], label: `${q.ex}${LAWN[q.subj]}　第 ${q.no} 題`, html: `<div class="ans"><q>${L[ck]}　${esc(q.opts[q.ans])}</q></div>` });
+      result(ok, { tts: '答案是' + q.opts[q.ans], label: `${q.ex}${LAWN[q.subj]}　第 ${q.no} 題`, html: noteHTML(q.id, `<div class="ans"><q>${L[ck]}　${esc(q.opts[q.ans])}</q></div>`) });
     };
     bs.forEach(b => b.onclick = () => go(+b.dataset.k));
     S.say = () => (q.ctx ? q.ctx + '。' : '') + q.q + '。' + perm.map((p, k) => L[k] + '，' + q.opts[p]).join('。');
@@ -1055,7 +1057,7 @@ function mockStart(title, list, opt) {
     $app.innerHTML = `<div class="end"><div class="score">${score}</div><div class="meta">${esc(title)}・答對 ${right} / ${M.items.length}</div></div>
     <div class="ansheet">${M.items.map((it, i) => `<button class="${okAt(it, M.ans[i]) ? 'o' : 'x'}" data-i="${i}">${noOf(i)}</button>`).join('')}</div>
     <div class="btns"><button class="btn" id="bk">學法</button></div>
-    ${wrong.length ? `<section style="display:flex;flex-direction:column;gap:14px"><h2>答錯 ${wrong.length}</h2>${wrong.map(({ it, i }) => { if (isMulti(it.q)) { const right = it.perm.map((p, k) => it.q.ans.includes(p) ? L[k] : '').join(''), mine = M.ans[i].slice().sort().map(k => L[k]).join('') || '未作答'; return `<div id="w${i}" style="display:flex;flex-direction:column;gap:6px"><div class="meta">第 ${noOf(i)} 題・複選</div>${ctxHTML(it.q)}<div style="font-weight:700">${esc(it.q.q)}</div>${it.perm.map((p, k) => `<div style="${it.q.ans.includes(p) ? 'color:var(--ok);font-weight:700' : 'color:var(--muted)'}">(${L[k]}) ${esc(it.q.opts[p])}${whyText(it.q.id, p) ? `<small class="why">${esc(whyText(it.q.id, p))}</small>` : ''}</div>`).join('')}<div class="meta">正確 ${right}・你選 ${mine}</div></div>`; } const c = it.perm.indexOf(it.q.ans), a = M.ans[i]; return `<div id="w${i}" style="display:flex;flex-direction:column;gap:6px"><div class="meta">第 ${noOf(i)} 題</div>${ctxHTML(it.q)}<div style="font-weight:700">${esc(it.q.q || '第 ' + it.q.no + ' 格')}</div><div style="color:var(--ok);font-weight:700">(${L[c]}) ${esc(it.q.opts[it.q.ans])}${whyText(it.q.id, it.q.ans) ? `<small class="why">${esc(whyText(it.q.id, it.q.ans))}</small>` : ''}</div>${a >= 0 ? `<div style="color:var(--verm)"><s>(${L[a]}) ${esc(it.q.opts[it.perm[a]])}</s>${whyText(it.q.id, it.perm[a]) ? `<small class="why">${esc(whyText(it.q.id, it.perm[a]))}</small>` : ''}</div>` : '<div class="muted">未作答</div>'}${it.q.gen ? '' : srcHTML(it.q.law, it.q.no, it.q.quote)}</div>`; }).join('')}</section>` : ''}`;
+    ${wrong.length ? `<section style="display:flex;flex-direction:column;gap:14px"><h2>答錯 ${wrong.length}</h2>${wrong.map(({ it, i }) => { if (isMulti(it.q)) { const right = it.perm.map((p, k) => it.q.ans.includes(p) ? L[k] : '').join(''), mine = M.ans[i].slice().sort().map(k => L[k]).join('') || '未作答'; return `<div id="w${i}" style="display:flex;flex-direction:column;gap:6px"><div class="meta">第 ${noOf(i)} 題・複選</div>${ctxHTML(it.q)}<div style="font-weight:700">${esc(it.q.q)}</div>${it.perm.map((p, k) => `<div style="${it.q.ans.includes(p) ? 'color:var(--ok);font-weight:700' : 'color:var(--muted)'}">(${L[k]}) ${esc(it.q.opts[p])}${whyText(it.q.id, p) ? `<small class="why">${esc(whyText(it.q.id, p))}</small>` : ''}</div>`).join('')}<div class="meta">正確 ${right}・你選 ${mine}</div>${NOTE[it.q.id] ? `<p class="wnote">${esc(NOTE[it.q.id])}</p>` : ''}</div>`; } const c = it.perm.indexOf(it.q.ans), a = M.ans[i]; return `<div id="w${i}" style="display:flex;flex-direction:column;gap:6px"><div class="meta">第 ${noOf(i)} 題</div>${ctxHTML(it.q)}<div style="font-weight:700">${esc(it.q.q || '第 ' + it.q.no + ' 格')}</div><div style="color:var(--ok);font-weight:700">(${L[c]}) ${esc(it.q.opts[it.q.ans])}${whyText(it.q.id, it.q.ans) ? `<small class="why">${esc(whyText(it.q.id, it.q.ans))}</small>` : ''}</div>${a >= 0 ? `<div style="color:var(--verm)"><s>(${L[a]}) ${esc(it.q.opts[it.perm[a]])}</s>${whyText(it.q.id, it.perm[a]) ? `<small class="why">${esc(whyText(it.q.id, it.perm[a]))}</small>` : ''}</div>` : '<div class="muted">未作答</div>'}${it.q.gen ? (NOTE[it.q.id] ? `<p class="wnote">${esc(NOTE[it.q.id])}</p>` : '') : srcHTML(it.q.law, it.q.no, it.q.quote)}</div>`; }).join('')}</section>` : ''}`;
     bindSrc($app);
     document.getElementById('bk').onclick = () => goTab('modes');
     $app.querySelectorAll('.ansheet button.x').forEach(b => b.onclick = () => { const e = document.getElementById('w' + b.dataset.i); e && e.scrollIntoView({ behavior: 'smooth' }); });
