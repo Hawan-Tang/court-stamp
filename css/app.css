@@ -661,3 +661,6 @@ body.playing .qslide{will-change:transform;touch-action:pan-y}
 .seg3{display:flex;gap:4px;background:var(--faint);border-radius:12px;padding:3px}
 .seg3 button{border:0;background:none;color:var(--muted);font-size:14px;font-weight:700;padding:6px 10px;border-radius:9px;transition:background .2s,color .2s}
 .seg3 button.on{background:var(--page);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+button.sver{display:block;margin:0 auto;border:0;background:none;padding:6px 14px;border-radius:999px;cursor:pointer}
+button.sver:active{background:var(--faint)}
+button.sver.spin{opacity:.4}
