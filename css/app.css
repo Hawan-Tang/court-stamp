@@ -697,3 +697,7 @@ button.sver.spin{opacity:.4}
 .opts.multi .opt.sel{border-color:var(--indigo);background:var(--indigo-soft)}
 .opts.multi .opt.sel .L{background:var(--indigo);color:#fff}
 .opt.right.miss{border-style:dashed}
+
+/* 整題觀念解說 */
+.gnote p{margin:0;color:var(--ink)}
+.wnote{margin:2px 0 0;font-size:14px;line-height:1.7;color:var(--ink);background:var(--page);border-radius:14px;padding:10px 12px}
