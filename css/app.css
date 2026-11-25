@@ -693,3 +693,7 @@ button.sver.spin{opacity:.4}
 .plantog .chev{width:18px;height:18px;flex:none;color:var(--muted);transition:transform .2s}
 .plantog.open .chev{transform:rotate(90deg)}
 #planBody .srow:first-child{border-top:1px solid var(--line)}
+/* 複選題 */
+.opts.multi .opt.sel{border-color:var(--indigo);background:var(--indigo-soft)}
+.opts.multi .opt.sel .L{background:var(--indigo);color:#fff}
+.opt.right.miss{border-style:dashed}
