@@ -484,11 +484,12 @@ function readCards(cards, opt) {
 }
 
 /* ---------- 題目執行器 ---------- */
-const PLAIN = window.PLAIN || {};
+const PLAIN = window.PLAIN || {}, PLAIN_EX = window.PLAIN_EX || {};
+const exHTML = k => (PLAIN_EX[k] || []).map(e => `<div class="pex"><b class="pext">例・${esc(e.t)}</b><div><span class="pk">情境</span>${esc(e.s)}</div><div><span class="pk">結果</span>${esc(e.r)}</div></div>`).join('');
 /* 條文白話：key 是「法規|條號」，\n 分段 */
 function plainHTML(arts) {
   const seen = new Set(), out = [];
-  (arts || []).forEach(([law, no]) => { const k = law + '|' + no; if (seen.has(k) || !PLAIN[k]) return; seen.add(k); out.push(`<div class="fh">${esc(law)} ${esc(no)}</div>${PLAIN[k].split('\n').filter(Boolean).map(t => `<p>${esc(t)}</p>`).join('')}`); });
+  (arts || []).forEach(([law, no]) => { const k = law + '|' + no; if (seen.has(k) || !PLAIN[k]) return; seen.add(k); out.push(`<div class="fh">${esc(law)} ${esc(no)}</div>${PLAIN[k].split('\n').filter(Boolean).map(t => `<p>${esc(t)}</p>`).join('')}${exHTML(k)}`); });
   return out.join('');
 }
 /* 條文與白話一次只開一個 */
@@ -1042,5 +1043,5 @@ function vLaws() {
 }
 
 route();
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) { const had = !!navigator.serviceWorker.controller; let done = false; navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && !done) { done = true; location.reload(); } }); navigator.serviceWorker.register('sw.js').then(r => r.update()).catch(() => {}); }
+try { if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) { const had = !!navigator.serviceWorker.controller; let done = false; navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && !done) { done = true; location.reload(); } }); navigator.serviceWorker.register('sw.js').then(r => r.update()).catch(() => {}); } } catch (e) {}
 })();
