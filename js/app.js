@@ -253,6 +253,15 @@ document.addEventListener('pointerdown', e => { if (e.target.closest('.btn,.opt,
 const GEAR = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.3 7.3 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.3 7.3 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.3 7.3 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>';
 function applyAnim() { document.body.classList.toggle('noanim', !ST.set.anim); }
 applyAnim();
+/* 外觀：auto 跟隨系統，或固定淺色／深色 */
+function applyTheme() {
+  const t = ST.set.theme, r = document.documentElement;
+  if (t === 'light' || t === 'dark') r.dataset.theme = t; else delete r.dataset.theme;
+  const dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.content = dark ? '#141418' : '#F2F2F7'; m.removeAttribute('media'); });
+}
+applyTheme();
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme); } catch (e) {}
 document.getElementById('setBtn').innerHTML = GEAR;
 document.getElementById('setBtn').onclick = () => openSettings();
 document.getElementById('logo').innerHTML = CHARS.svg('turtle', 'idle', { cls: 'logochr', head: true });
@@ -262,6 +271,7 @@ function openSettings() {
   const sw = (k, label, sub) => `<label class="srow"><span><b>${label}</b>${sub ? `<small>${sub}</small>` : ''}</span><input type="checkbox" class="sw" data-k="${k}" ${ST.set[k] ? 'checked' : ''}></label>`;
   const el = document.createElement('div'); el.id = 'sheet'; el.className = 'sheet-wrap';
   el.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="設定"><div class="grab"></div><div class="shead"><span></span><h2>設定</h2><button class="sdone" id="sclose">完成</button></div>
+    <div class="sgroup"><div class="srow"><span><b>外觀</b></span><div class="seg3" id="themeSeg">${[['auto', '跟隨系統'], ['light', '淺色'], ['dark', '深色']].map(([k, t]) => `<button class="${(ST.set.theme || 'auto') === k ? 'on' : ''}" data-t="${k}">${t}</button>`).join('')}</div></div></div>
     <div class="sgroup">${sw('sound', '音效')}<label class="srow vol ${ST.set.sound ? '' : 'off'}"><span><b>音量</b></span><input type="range" id="vol" min="0" max="1" step="0.05" value="${ST.set.vol}"></label>${sw('vib', '震動', '答錯時手機震一下')}${sw('anim', '動畫', '角色動作、紙花、滑入效果')}</div>
     <div class="sgroup">${sw('hl', '螢光筆標色', '數字、主體、例外字上色')}${sw('notes', '註釋', '專有名詞可以點開解釋')}</div>
     ${TTS_OK ? `<div class="sgroup">${sw('tts', '自動朗讀', '題目出現時念題目，答完念條文')}<label class="srow"><span><b>語速</b></span><input type="range" id="ttsRate" min="0.6" max="1.6" step="0.1" value="${ST.set.ttsRate || 1}"></label>${zhVoices.length ? `<label class="srow"><span><b>聲音</b></span><select id="ttsVoice" class="ssel"><option value="">自動${ttsVoice && !ST.set.voice ? `（${esc(ttsVoice.name)}）` : ''}</option>${zhVoices.map(v => `<option value="${esc(v.name)}" ${ST.set.voice === v.name ? 'selected' : ''}>${esc(v.name)}　${esc(v.lang)}</option>`).join('')}</select></label>` : ''}</div>` : ''}
@@ -271,6 +281,7 @@ function openSettings() {
   const close = () => { el.classList.add('out'); setTimeout(() => el.remove(), 200); if (!document.body.classList.contains('playing')) route(); };
   el.addEventListener('click', e => { if (e.target === el) close(); });
   document.getElementById('sclose').onclick = close;
+  el.querySelectorAll('#themeSeg button').forEach(b => b.onclick = () => { ST.set.theme = b.dataset.t; save(); applyTheme(); el.querySelectorAll('#themeSeg button').forEach(x => x.classList.toggle('on', x === b)); });
   el.querySelectorAll('.sw').forEach(c => c.onchange = () => { ST.set[c.dataset.k] = c.checked; save(); applyAnim(); el.querySelector('.vol').classList.toggle('off', !ST.set.sound); if (c.dataset.k === 'sound' && c.checked) sOk(); });
     const tr = document.getElementById('ttsRate'); if (tr) { tr.oninput = () => { ST.set.ttsRate = +tr.value; save(); }; tr.onchange = () => speak('每日目標三十題'); }
   const tv = document.getElementById('ttsVoice'); if (tv) tv.onchange = () => { ST.set.voice = tv.value; save(); pickVoice(); speak('法院組織法第八十六條，訴訟之辯論及裁判之宣示，應公開法庭行之。'); };
