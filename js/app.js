@@ -13,6 +13,9 @@ const U = {}, Q = {}, Z = {}, T = {}, SQ = {}, IDX = {};
 D.units.forEach(u => U[u.id] = u);
 D.questions.forEach(q => Q[q.id] = q);
 const GEN = D.gen || []; GEN.forEach(q => { q.gen = 1; Q[q.id] = q; });
+/* 自編模擬題（國文、公民、英文）：另放在 selfq.js，不混進開始學習和考古題 */
+const SELF = window.SELFQ || []; SELF.forEach(q => { q.gen = 1; q.self = 1; Q[q.id] = q; });
+const srcTag = q => q.self ? '模擬題' : q.ex + '考題';
 const PSUBJ = { org: '法院組織法大意', cc: '民事訴訟法大意與刑事訴訟法大意', chi: '國文', cie: '公民與英文', echi: '初等考試・國文', ecie: '初等考試・公民與英文' };
 D.cloze.forEach(z => Z[z.id] = z);
 D.tf.forEach(t => T[t.id] = t);
@@ -500,10 +503,16 @@ function vMap() {
 function playLevel(id) {
   reset(); document.body.classList.add('playing');
   const lv = LV[LVI[id]];
-  readCards(lv.arts.map(([law, no]) => ({ law, no })), {
-    back: () => goTab('map'),
-    done: () => runItems(lv.items.map(([t, i]) => ({ t, id: i })), { level: lv, back: () => goTab('map') })
-  });
+  /* 看一條考一條：每張條文卡後面接這一條的 1～2 題，其他題放最後 */
+  const key = (l, n) => l + '|' + n, by = new Map(lv.arts.map(a => [key(a[0], a[1]), []])), later = [], other = [];
+  lv.items.forEach(([t, i]) => { const r = ({ q: Q, z: Z, t: T, o: O })[t]; const x = r && r[i], k = x && key(x.law, x.no); (k && by.has(k) ? by.get(k) : other).push({ t, id: i }); });
+  const seq = [], cardAt = {}; let carry = [];
+  lv.arts.forEach(([law, no]) => { const its = by.get(key(law, no)); carry.push({ law, no }); if (!its.length) return; cardAt[seq.length] = { cards: carry }; carry = []; seq.push(...its.slice(0, 2)); later.push(...its.slice(2)); });
+  const tail = shuffle([...later, ...other]);
+  if (carry.length) { if (tail.length) cardAt[seq.length] = { cards: carry }; else if (seq.length) cardAt[0].cards.push(...carry); }
+  seq.push(...tail);
+  if (!seq.length) { readCards(carry, { back: () => goTab('map'), done: () => goTab('map') }); return; }
+  runItems(seq, { level: lv, cardAt, back: () => goTab('map') });
 }
 
 /* ---------- 條文卡 ---------- */
@@ -561,6 +570,7 @@ function bindFav(id) {
   b.onclick = () => { if (ST.fav[id]) delete ST.fav[id]; else { ST.fav[id] = Date.now(); pluck(880, 0, .14, .3); pluck(1320, .06, .1, .4); } save(); paint(); b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); };
 }
 const WHY = window.WHY || {}, ZH = window.ZH || {}, NOTE = window.NOTE || {};
+SELF.forEach(q => { if (q.why) WHY[q.id] = q.why; if (q.note) NOTE[q.id] = q.note; if (q.zh) ZH[q.id] = q.zh; });
 /* 國文、公民、英文：整題觀念解說，沒有的話照舊顯示正確答案 */
 const noteHTML = (id, fb) => NOTE[id] ? `<div class="ans gnote"><p>${esc(NOTE[id])}</p></div>` : fb;
 /* 英文題答完後：題目、文章、選項的中文 */
@@ -585,7 +595,7 @@ function permFor(ans, n) {
 }
 const accepts = (q, orig) => orig === q.ans || (q.alt || []).includes(orig);
 /* 題組文章；英文克漏字沒有題幹，就把文章裡該格的號碼標出來 */
-const ctxHTML = q => { if (!q.ctx) return ''; let h = esc(q.ctx); if (!q.q && q.no) h = h.replace(new RegExp('(^|[^0-9])(' + q.no + ')(?![0-9])', 'g'), '$1<mark class="blankno">$2</mark>'); return `<div class="qctx">${h}</div>`; };
+const ctxHTML = q => { if (!q.ctx) return ''; let h = esc(q.ctx); if (!q.q && q.no) h = h.replace(new RegExp('(^|[^0-9])(' + q.no + ')(?![0-9])', 'g'), '$1<mark class="blankno">$2</mark>'); const m = q.self && /^第 \((\d+)\) 格/.exec(q.q || ''); if (m) h = h.split('(' + m[1] + ')').join('<mark class="blankno">(' + m[1] + ')</mark>'); return `<div class="qctx">${h}</div>`; };
 const qHead = q => ctxHTML(q) + (q.q || !q.gen ? `<p class="qtext">${q.gen ? esc(q.q) : hlText(q.q, true)}</p>` : `<p class="qtext">第 <span class="num">${q.no}</span> 格</p>`);
 const XICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 function lawOfId(id) {
@@ -740,6 +750,8 @@ function runItems(items, opt) {
   }
   const srcOf = (law, no, quote, extra) => ({ arts: [[law, no]], tts: `${law}${no}。${quote || ''}`, label: `出處　${law} ${no}`, html: answerHTML(quote, extra), full: `<div class="fh">${esc(law)} ${esc(no)}</div>${artHTML(law, no, { quote, hl: true })}` });
   function draw() {
+    const ca = opt.cardAt && opt.cardAt[S.i];
+    if (ca && !ca.seen) { ca.seen = true; document.querySelectorAll('.dock').forEach(d => d.remove()); readCards(ca.cards, { back: opt.back, done: draw }); return; }
     window.scrollTo(0, 0); S.done = false; S.reveal = null; S.say = null; S.sayA = ''; S.peekLabel = ''; $app.classList.remove('static');
     document.querySelectorAll('.dock').forEach(d => d.remove());
     const it = items[S.i];
@@ -761,7 +773,7 @@ function runItems(items, opt) {
   function choose(bs, ck, k) { bs.forEach(x => x.disabled = true); bs.forEach((x, i) => { if (i === ck) { x.classList.add('right'); markO(x); } else if (i === k) { x.classList.add('wrong'); markX(x); } else x.classList.add('dim'); }); }
   function drawM5(it) {
     const q = Q[it.id], perm = permFor(q.ans, q.opts.length), pick = new Set();
-    $app.innerHTML = card(it, (q.part || LAWTAB[q.subj]) + '・' + q.ex + '考題・複選', qHead(q)) +
+    $app.innerHTML = card(it, (q.part || LAWTAB[q.subj]) + '・' + srcTag(q) + '・複選', qHead(q)) +
       `<div class="opts multi">${perm.map((p, k) => `<button class="opt" data-k="${k}" aria-pressed="false"><span class="L">${L[k]}</span><span>${esc(q.opts[p])}</span></button>`).join('')}</div><div id="ex"></div>`;
     const bs = [...$app.querySelectorAll('.opt')];
     S.peekLabel = '確定';
@@ -771,19 +783,19 @@ function runItems(items, opt) {
       bs.forEach((b, k) => { b.disabled = true; b.classList.remove('sel'); const right = q.ans.includes(perm[k]); if (right) { b.classList.add('right'); markO(b); if (!pick.has(k)) b.classList.add('miss'); } else if (pick.has(k)) { b.classList.add('wrong'); markX(b); } else b.classList.add('dim'); });
       addZh(bs, q, perm); addWhy(bs, q.id, perm);
       const letters = perm.map((p, k) => q.ans.includes(p) ? L[k] : '').join('');
-      result(ok, { tts: '答案是' + letters.split('').join('、'), label: `${q.ex}${LAWN[q.subj]}　第 ${q.no} 題`, html: noteHTML(q.id, `<div class="ans"><q>正確答案　${letters}</q></div>`) });
+      result(ok, { tts: '答案是' + letters.split('').join('、'), label: q.self ? '模擬題　' + q.part : `${q.ex}${LAWN[q.subj]}　第 ${q.no} 題`, html: noteHTML(q.id, `<div class="ans"><q>正確答案　${letters}</q></div>`) });
     };
     S.say = () => (q.ctx ? q.ctx + '。' : '') + q.q + '。複選題。' + perm.map((p, k) => L[k] + '，' + q.opts[p]).join('。');
   }
   function drawG(it) {
     if (isMulti(Q[it.id])) return drawM5(it);
     const q = Q[it.id], perm = permFor(q.ans);
-    $app.innerHTML = card(it, (q.part || LAWTAB[q.subj]) + '・' + q.ex + '考題', qHead(q)) +
+    $app.innerHTML = card(it, (q.part || LAWTAB[q.subj]) + '・' + srcTag(q), qHead(q)) +
       `<div class="opts">${perm.map((p, k) => `<button class="opt" data-k="${k}"><span class="L">${L[k]}</span><span>${esc(q.opts[p])}</span></button>`).join('')}</div><div id="ex"></div>`;
     const bs = [...$app.querySelectorAll('.opt')], ck = perm.indexOf(q.ans);
     const go = k => {
       const ok = k >= 0 && accepts(q, perm[k]); choose(bs, ok ? k : ck, k); addZh(bs, q, perm); addWhy(bs, q.id, perm);
-      result(ok, { tts: '答案是' + q.opts[q.ans], label: `${q.ex}${LAWN[q.subj]}　第 ${q.no} 題`, html: noteHTML(q.id, `<div class="ans"><q>${L[ck]}　${esc(q.opts[q.ans])}</q></div>`) });
+      result(ok, { tts: '答案是' + q.opts[q.ans], label: q.self ? '模擬題　' + q.part : `${q.ex}${LAWN[q.subj]}　第 ${q.no} 題`, html: noteHTML(q.id, `<div class="ans"><q>${L[ck]}　${esc(q.opts[q.ans])}</q></div>`) });
     };
     bs.forEach(b => b.onclick = () => go(+b.dataset.k));
     S.say = () => (q.ctx ? q.ctx + '。' : '') + q.q + '。' + perm.map((p, k) => L[k] + '，' + q.opts[p]).join('。');
@@ -914,6 +926,12 @@ const MODE_ICONS = {
   order: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 5l1-1v4M3.5 12.5a1.2 1.2 0 1 1 2 1L3.5 15H6M3.5 17h2a1 1 0 0 1 0 2h-2"/></svg>',
   mock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M9 10h6M9 14h6M9 18h3"/></svg>',
 };
+const SELF_K = [['國文', '國文'], ['公民', '公民'], ['英文', '英文']];
+const selfPool = p => SELF.filter(q => q.part === p);
+function selfHTML() {
+  if (!SELF.length) return '';
+  return `<section style="display:flex;flex-direction:column;gap:10px"><h2>模擬題</h2><div class="modes">${SELF_K.map(([p, t]) => { const a = selfPool(p); if (!a.length) return ''; const d = a.filter(q => ST.r[q.id]).length; return `<button class="mode" data-m="self|${p}" style="min-height:0"><b>${t}</b><span class="num">${d} / ${a.length}</span></button>`; }).join('')}</div></section>`;
+}
 function vModes() {
   const qn = D.questions.filter(q => inFilter(q.unit)).length;
   $app.innerHTML = `<h1>學法</h1><div class="chips">${[['all', '三法'], ['org', '法組'], ['civ', '民訴'], ['crim', '刑訴']].map(([k, t]) => `<button class="chip ${FILTER === k ? 'on' : ''}" data-f="${k}">${t}</button>`).join('')}</div>
@@ -928,6 +946,7 @@ function vModes() {
    <button class="mode" data-m="favbook">${MODE_ICONS.fav}<b>收藏</b><span>${favIds().length} 題</span></button>
   </div>
   ${pastHTML()}
+  ${selfHTML()}
   <section style="display:flex;flex-direction:column;gap:10px"><h2>模擬考</h2>
    <button class="mode" data-m="mock1" style="min-height:0"><b>法院組織法大意</b><span>50 題・60 分鐘・每題 2 分</span></button>
    <button class="mode" data-m="mock2" style="min-height:0"><b>民事訴訟法大意與刑事訴訟法大意</b><span>民訴 25＋刑訴 25・60 分鐘</span></button>
@@ -951,6 +970,7 @@ function vModes() {
     else if (m === 'wrongbook') { goTab('wrong'); return; }
     else if (m === 'favbook') { goTab('fav'); return; }
     else if (m === 'rand') runItems(freshPick(D.questions.filter(q => inFilter(q.unit)), 20, (a, k) => shuffle(a).slice(0, k)).map(q => ({ t: 'q', id: q.id })), { back });
+    else if (m.startsWith('self|')) runItems(freshPick(selfPool(m.slice(5)), 20, (a, k) => shuffle(a).slice(0, k)).map(q => ({ t: 'q', id: q.id })), { back });
     else if (m === 'mock1') mockStart('法院組織法大意', freshPick(D.questions.filter(q => lawOf(q.unit) === 'org'), 50, weighted));
     else if (m === 'mock2') mockStart('民事訴訟法大意與刑事訴訟法大意', [...freshPick(D.questions.filter(q => lawOf(q.unit) === 'civ'), 25, weighted), ...freshPick(D.questions.filter(q => lawOf(q.unit) === 'crim'), 25, weighted)]);
   });
@@ -1077,7 +1097,7 @@ function mockStart(title, list, opt) {
 /* ========== 收藏 ========== */
 function favIds() { return Object.keys(ST.fav).filter(id => Q[id] || Z[id] || O[id] || T[id] || SQ[id] || (D.matches && D.matches[id])).sort((a, b) => ST.fav[b] - ST.fav[a]); }
 function favInfo(id) {
-  if (Q[id]) { const q = Q[id]; return { k: q.gen ? q.subj : lawOf(q.unit), s: q.q, r: q.gen ? `${q.ex}考題　第 ${q.no} 題` : `${q.law} ${q.no}` }; }
+  if (Q[id]) { const q = Q[id]; return { k: q.gen ? q.subj : lawOf(q.unit), s: q.q, r: q.gen ? (q.self ? '模擬題　' + q.part : `${q.ex}考題　第 ${q.no} 題`) : `${q.law} ${q.no}` }; }
   if (Z[id]) { const z = Z[id]; return { k: lawOf(z.unit), s: z.pre + '＿＿' + z.post, r: `${z.law} ${z.no}` }; }
   if (T[id]) { const t = T[id]; return { k: lawOf(t.unit), s: t.s, r: `${t.law} ${t.no}` }; }
   if (O[id]) { const o = O[id]; return { k: lawOf(o.unit), s: o.quote, r: `${o.law} ${o.no}` }; }
@@ -1101,7 +1121,7 @@ function wrongIds() { return Object.keys(ST.r).filter(id => (Q[id] || Z[id]) && 
 function vWrong() {
   const ids = wrongIds();
   if (!ids.length) { $app.innerHTML = `<h1>錯題</h1><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5z"/><path d="M9 13l2 2 4-4"/></svg><p class="muted">答錯的題目會收在這裡，連續答對兩次才會移出。</p></div>`; return; }
-  const items = ids.map(id => Q[id] ? (Q[id].gen ? { t: 'q', id, k: Q[id].subj, s: Q[id].q, law: Q[id].ex + '考題', no: '第 ' + Q[id].no + ' 題' } : { t: 'q', id, k: lawOf(Q[id].unit), s: Q[id].q, law: Q[id].law, no: Q[id].no }) : { t: 'z', id, k: lawOf(Z[id].unit), s: Z[id].pre + '＿＿' + Z[id].post, law: Z[id].law, no: Z[id].no });
+  const items = ids.map(id => Q[id] ? (Q[id].gen ? { t: 'q', id, k: Q[id].subj, s: Q[id].q, law: srcTag(Q[id]), no: Q[id].self ? Q[id].part : '第 ' + Q[id].no + ' 題' } : { t: 'q', id, k: lawOf(Q[id].unit), s: Q[id].q, law: Q[id].law, no: Q[id].no }) : { t: 'z', id, k: lawOf(Z[id].unit), s: Z[id].pre + '＿＿' + Z[id].post, law: Z[id].law, no: Z[id].no });
   const by = {}; items.forEach(x => (by[x.k] = by[x.k] || []).push(x));
   $app.innerHTML = `<h1>錯題 <span class="muted num" style="font-size:18px">${ids.length}</span></h1><div class="btns"><button class="btn" id="all">全部重刷</button></div>
   ${['org', 'civ', 'crim', 'chi', 'cie'].filter(k => by[k]).map(k => `<section style="display:flex;flex-direction:column;gap:8px"><h2>${LAWN[k]} <span class="muted num" style="font-size:15px">${by[k].length}</span></h2><div class="list">${by[k].map(x => `<div class="row"><div><div style="font-size:15px">${esc(x.s)}</div><div class="r">${esc(x.law)} ${esc(x.no)}</div></div><span class="r num">✕${ST.r[x.id][1]}</span></div>`).join('')}</div><button class="btn ghost wide" data-k="${k}">只刷${LAWN[k]}</button></section>`).join('')}`;
