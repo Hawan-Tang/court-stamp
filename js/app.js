@@ -950,9 +950,9 @@ function vModes() {
     else if (m === 'order') runItems(shuffle(D.seqs.filter(s => inFilter(s.unit))).map(s => ({ t: 's', id: s.id })), { back });
     else if (m === 'wrongbook') { goTab('wrong'); return; }
     else if (m === 'favbook') { goTab('fav'); return; }
-    else if (m === 'rand') runItems(shuffle(D.questions.filter(q => inFilter(q.unit))).slice(0, 20).map(q => ({ t: 'q', id: q.id })), { back });
-    else if (m === 'mock1') mockStart('法院組織法大意', weighted(D.questions.filter(q => lawOf(q.unit) === 'org'), 50));
-    else if (m === 'mock2') mockStart('民事訴訟法大意與刑事訴訟法大意', [...weighted(D.questions.filter(q => lawOf(q.unit) === 'civ'), 25), ...weighted(D.questions.filter(q => lawOf(q.unit) === 'crim'), 25)]);
+    else if (m === 'rand') runItems(freshPick(D.questions.filter(q => inFilter(q.unit)), 20, (a, k) => shuffle(a).slice(0, k)).map(q => ({ t: 'q', id: q.id })), { back });
+    else if (m === 'mock1') mockStart('法院組織法大意', freshPick(D.questions.filter(q => lawOf(q.unit) === 'org'), 50, weighted));
+    else if (m === 'mock2') mockStart('民事訴訟法大意與刑事訴訟法大意', [...freshPick(D.questions.filter(q => lawOf(q.unit) === 'civ'), 25, weighted), ...freshPick(D.questions.filter(q => lawOf(q.unit) === 'crim'), 25, weighted)]);
   });
 }
 /* 考古題：一年一份卷，題目照原卷順序 */
@@ -975,6 +975,15 @@ function pastHTML() {
   return `<section style="display:flex;flex-direction:column;gap:10px"><h2>考古題</h2>
     <div class="pyears">${PAST_YEARS.map(y => `<button class="chip pyear ${y === PASTY ? 'on' : ''}" data-y="${y}">${y}</button>`).join('')}</div>
     <div class="list plist">${rows}</div></section>`;
+}
+/* 抽題順序：沒做過的新題 → 到期該複習的（答錯的隔天到期）→ 都不夠才用還沒到期的（最快到期的先） */
+function freshPick(pool, n, pick) {
+  const now = Date.now(), due = id => (ST.srs[id] || {}).due || 0;
+  const neu = pool.filter(q => !ST.r[q.id]), rev = pool.filter(q => ST.r[q.id] && due(q.id) <= now);
+  let out = pick(neu, n);
+  if (out.length < n) out = out.concat(pick(rev, n - out.length));
+  if (out.length < n) out = out.concat(pool.filter(q => ST.r[q.id] && due(q.id) > now).sort((a, b) => due(a.id) - due(b.id)).slice(0, n - out.length));
+  return shuffle(out);
 }
 function weighted(pool, n) { return pool.map(q => ({ q, k: Math.pow(Math.random(), 1 / (U[q.unit].pri || 1)) })).sort((a, b) => b.k - a.k).slice(0, n).map(x => x.q); }
 
